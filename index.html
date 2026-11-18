@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1e293b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Контроль МПД / УЗК</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+  body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  input { -webkit-user-select: text; user-select: text; }
+</style>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen pb-12">
+
+<header class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md">
+  <div class="flex justify-between items-center mb-2">
+    <h1 class="font-bold text-lg">Цех МПД / УЗК <span id="counter" class="text-xs font-normal text-slate-300 ml-1"></span></h1>
+    <span id="sync-status" class="text-xs px-2 py-1 bg-yellow-600 rounded">Подключение...</span>
+  </div>
+  <div class="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-lg text-center text-sm mb-2">
+    <button data-role="uzk" class="role-btn py-2 rounded">УЗК</button>
+    <button data-role="mpd1" class="role-btn py-2 rounded">МПД 1</button>
+    <button data-role="mpd2" class="role-btn py-2 rounded">МПД 2</button>
+  </div>
+  <div class="flex items-center justify-between bg-slate-900 rounded-lg text-sm">
+    <button id="day-prev" class="px-4 py-2 text-lg">‹</button>
+    <button id="day-label" class="flex-1 py-2 font-semibold"></button>
+    <button id="day-next" class="px-4 py-2 text-lg">›</button>
+  </div>
+</header>
+
+<section id="uzk-panel" class="p-3 bg-white border-b shadow-sm">
+  <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Добавить трубу (УЗК)</label>
+  <div class="flex gap-2">
+    <input id="pipe-input" type="text" autocomplete="off" placeholder="Номер(а): пробел / запятая / новая строка"
+           class="flex-1 min-w-0 border-2 border-gray-300 p-3 rounded-lg text-lg font-bold uppercase focus:outline-none focus:border-blue-600">
+    <button id="add-btn" class="bg-blue-600 text-white px-5 font-bold rounded-lg text-lg active:bg-blue-700">+</button>
+  </div>
+  <p id="add-msg" class="text-xs text-gray-500 mt-1 h-4"></p>
+</section>
+
+<div class="px-3 pt-2 max-w-md mx-auto">
+  <label class="flex items-center gap-2 text-sm text-gray-600">
+    <input type="checkbox" id="only-wait" class="w-5 h-5"> Только ожидающие моей проверки
+  </label>
+</div>
+
+<main id="pipes-list" class="p-2 max-w-md mx-auto space-y-2"></main>
+
+<!-- Выбор результата -->
+<div id="defect-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3">
+  <div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-3">
+    <h3 class="font-bold text-center text-gray-700 text-lg">Результат контроля</h3>
+    <div class="grid gap-2">
+      <button data-val="N"   class="def-btn w-full py-4 bg-emerald-600 text-white font-bold text-xl rounded-xl">N — Годная</button>
+      <button data-val="Н"   class="def-btn w-full py-4 bg-red-600 text-white font-bold text-xl rounded-xl">Н — Наружный</button>
+      <button data-val="В"   class="def-btn w-full py-4 bg-orange-600 text-white font-bold text-xl rounded-xl">В — Внутренний</button>
+      <button data-val="ЗАК" class="def-btn w-full py-4 bg-purple-700 text-white font-bold text-xl rounded-xl">ЗАК — Закалочная трещина</button>
+      <button data-val="-"   class="def-btn w-full py-3 bg-gray-300 text-gray-700 font-bold text-lg rounded-xl">Сбросить (-)</button>
+    </div>
+    <button id="cancel-btn" class="w-full py-2 text-gray-500 font-semibold">Отмена</button>
+  </div>
+</div>
+
+<!-- Правка номера (только УЗК) -->
+<div id="edit-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3">
+  <div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-3">
+    <h3 class="font-bold text-center text-gray-700 text-lg">Правка номера трубы</h3>
+    <input id="edit-input" type="text" autocomplete="off"
+           class="w-full border-2 border-gray-300 p-3 rounded-lg text-xl font-bold uppercase focus:outline-none focus:border-blue-600">
+    <div class="grid grid-cols-2 gap-2">
+      <button id="edit-save" class="py-3 bg-blue-600 text-white font-bold rounded-xl">Сохранить</button>
+      <button id="edit-del" class="py-3 bg-red-600 text-white font-bold rounded-xl">Удалить</button>
+    </div>
+    <button id="edit-cancel" class="w-full py-2 text-gray-500 font-semibold">Отмена</button>
+  </div>
+</div>
+
+<script>
+// ===== НАСТРОЙКИ =====
+const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_YOUR_KEY';   // Publishable key (или legacy anon)
+const SHIFT_START_HOUR = 7;          // день 07–19, ночь 19–07 (как в SQL)
+const TZ = 'Europe/Kyiv';
+
+// ===== СОСТОЯНИЕ =====
+const $ = id => document.getElementById(id);
+const STYLES = {
+  '-':  'bg-gray-200 text-gray-600',
+  'N':  'bg-emerald-600 text-white',
+  'Н':  'bg-red-600 text-white',
+  'В':  'bg-orange-600 text-white',
+  'ЗАК':'bg-purple-700 text-white'
+};
+const VALID = Object.keys(STYLES);
+const FIELD = { mpd1: 'mpd1_val', mpd2: 'mpd2_val' };
+
+let db = null;
+let role = localStorage.getItem('role') || 'uzk';
+let pipes = [];
+let target = null;     // {id, r} для выбора результата
+let editId = null;     // id трубы в правке
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} };
+const setStatus = (t, c) => { const b = $('sync-status'); b.textContent = t; b.className = 'text-xs px-2 py-1 rounded ' + c; };
+const hhmm = iso => iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
+
+// ===== СМЕНЫ (D = день 07–19, N = ночь 19–07) =====
+function currentShift() {
+  const s = new Date().toLocaleString('sv-SE', { timeZone: TZ });   // "YYYY-MM-DD HH:MM:SS"
+  const d = new Date(s.replace(' ', 'T') + 'Z');
+  const hour = d.getUTCHours();
+  d.setUTCHours(hour - SHIFT_START_HOUR);
+  return { date: d.toISOString().slice(0, 10), type: (hour >= 7 && hour < 19) ? 'D' : 'N' };
+}
+function addDays(date, n) { const d = new Date(date + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+const fmtDate = d => d.split('-').reverse().join('.');
+const key = s => s.date + s.type;                                   // 'D' < 'N' — порядок верный
+const stepShift = (s, dir) => dir > 0
+  ? (s.type === 'D' ? { date: s.date, type: 'N' } : { date: addDays(s.date, 1), type: 'D' })
+  : (s.type === 'N' ? { date: s.date, type: 'D' } : { date: addDays(s.date, -1), type: 'N' });
+
+let liveShift = currentShift();
+let view = liveShift;
+
+function setShift(s) {
+  if (key(s) > key(liveShift)) return;              // в будущее не листаем
+  view = s;
+  const live = key(s) === key(liveShift);
+  $('day-label').textContent = `${s.type === 'D' ? '☀️ День 07–19' : '🌙 Ночь 19–07'} · ${fmtDate(s.date)}${live ? ' · сейчас' : ''}`;
+  $('day-next').style.opacity = live ? .3 : 1;
+  pipes = []; render();
+  if (db) fetchPipes();
+}
+const inView = p => p.shift_date === view.date && p.shift_type === view.type;
+
+// ===== РОЛИ =====
+function setRole(r) {
+  role = r;
+  localStorage.setItem('role', r);
+  document.querySelectorAll('.role-btn').forEach(b => {
+    b.className = 'role-btn py-2 rounded ' + (b.dataset.role === r ? 'bg-blue-600 text-white font-bold' : 'text-gray-400');
+  });
+  $('uzk-panel').style.display = r === 'uzk' ? 'block' : 'none';
+  render();
+}
+const canEdit = r => role === 'uzk' || role === r;
+
+// ===== ДАННЫЕ =====
+async function fetchPipes() {
+  const v = view;
+  const { data, error } = await db.from('pipes_simple').select('*')
+    .eq('shift_date', v.date).eq('shift_type', v.type).order('created_at', { ascending: false });
+  if (v !== view) return;                          // пока грузилось, сменили смену
+  if (error) { setStatus('Ошибка загрузки', 'bg-red-600'); return; }
+  pipes = data; render();
+}
+
+function subscribe() {
+  db.channel('pipes_simple_ch')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pipes_simple' }, p => {
+      if (p.eventType === 'DELETE') {
+        pipes = pipes.filter(x => x.id !== p.old.id);
+      } else if (inView(p.new)) {
+        const i = pipes.findIndex(x => x.id === p.new.id);
+        if (i !== -1) pipes[i] = p.new; else pipes.unshift(p.new);
+      }
+      render();
+    })
+    .subscribe(st => {
+      if (st === 'SUBSCRIBED') { setStatus('Онлайн', 'bg-emerald-600'); fetchPipes(); }
+      else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(st)) setStatus('Нет связи', 'bg-red-600');
+    });
+}
+
+async function addPipes() {
+  const msg = t => { $('add-msg').textContent = t; setTimeout(() => $('add-msg').textContent = '', 4000); };
+  if (key(view) !== key(liveShift)) return msg('Добавлять можно только в текущую смену');
+  const nums = [...new Set($('pipe-input').value.toUpperCase().split(/[\s,;]+/).filter(Boolean))];
+  if (!nums.length) return;
+  const existing = new Set(pipes.map(p => p.pipe_number));
+  const fresh = nums.filter(n => !existing.has(n));
+  if (fresh.length) {
+    const { error } = await db.from('pipes_simple')
+      .upsert(fresh.map(n => ({ pipe_number: n })), { onConflict: 'pipe_number,shift_date,shift_type', ignoreDuplicates: true });
+    if (error) return msg('Ошибка: ' + error.message);
+  }
+  $('pipe-input').value = '';
+  const dup = nums.length - fresh.length;
+  msg(`Добавлено: ${fresh.length}` + (dup ? `, дубли пропущены: ${dup}` : ''));
+  buzz(30);
+}
+
+async function setValue(id, r, val) {
+  if (!VALID.includes(val)) return;
+  const col = FIELD[r], p = pipes.find(x => x.id === id);
+  const old = p ? { v: p[col], t: p[col.replace('_val', '_at')] } : null;
+  if (p) { p[col] = val; p[col.replace('_val', '_at')] = val === '-' ? null : new Date().toISOString(); render(); }
+  const { error } = await db.from('pipes_simple').update({ [col]: val }).eq('id', id);
+  if (error && p) { p[col] = old.v; p[col.replace('_val', '_at')] = old.t; render(); setStatus('Не сохранилось!', 'bg-red-600'); buzz([100, 50, 100]); }
+}
+
+// ===== ПРАВКА / УДАЛЕНИЕ (УЗК) =====
+function openEdit(id) {
+  const p = pipes.find(x => x.id === id); if (!p) return;
+  editId = id; $('edit-input').value = p.pipe_number;
+  $('edit-modal').classList.remove('hidden');
+}
+function closeEdit() { editId = null; $('edit-modal').classList.add('hidden'); }
+
+$('edit-save').onclick = async () => {
+  const val = $('edit-input').value.trim().toUpperCase();
+  const p = pipes.find(x => x.id === editId);
+  if (!val || !p) return closeEdit();
+  if (pipes.some(x => x.id !== editId && x.pipe_number === val)) { alert('Такой номер уже есть в этой смене'); return; }
+  const old = p.pipe_number; p.pipe_number = val; render();
+  const { error } = await db.from('pipes_simple').update({ pipe_number: val }).eq('id', editId);
+  if (error) { p.pipe_number = old; render(); alert('Ошибка: ' + error.message); }
+  closeEdit();
+};
+$('edit-del').onclick = async () => {
+  const p = pipes.find(x => x.id === editId); if (!p) return closeEdit();
+  if (!confirm(`Удалить трубу ${p.pipe_number}?`)) return;
+  const id = editId; closeEdit();
+  const { error } = await db.from('pipes_simple').delete().eq('id', id);
+  if (error) alert('Ошибка: ' + error.message); else { pipes = pipes.filter(x => x.id !== id); render(); }
+};
+$('edit-cancel').onclick = closeEdit;
+
+// ===== ВВОД (тап / долгое нажатие) =====
+function openModal(id, r) { target = { id, r }; $('defect-modal').classList.remove('hidden'); }
+function closeModal() { target = null; $('defect-modal').classList.add('hidden'); }
+
+let pressTimer = null, longFired = false;
+const list = $('pipes-list');
+list.addEventListener('pointerdown', e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return;
+  longFired = false;
+  pressTimer = setTimeout(() => {
+    longFired = true; buzz(40);
+    if (canEdit(b.dataset.r)) openModal(b.dataset.id, b.dataset.r);
+  }, 500);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => list.addEventListener(ev, () => clearTimeout(pressTimer)));
+list.addEventListener('click', e => {
+  const num = e.target.closest('[data-edit]');
+  if (num) { if (role === 'uzk') openEdit(num.dataset.edit); return; }
+  const b = e.target.closest('button[data-id]'); if (!b || longFired) return;
+  const { id, r, v } = b.dataset;
+  if (!canEdit(r)) return;
+  if (v === '-') { buzz(20); setValue(id, r, 'N'); } else openModal(id, r);
+});
+document.querySelectorAll('.def-btn').forEach(b => b.addEventListener('click', () => {
+  if (target) { setValue(target.id, target.r, b.dataset.val); buzz(20); }
+  closeModal();
+}));
+$('cancel-btn').onclick = closeModal;
+$('defect-modal').addEventListener('click', e => { if (e.target.id === 'defect-modal') closeModal(); });
+document.querySelectorAll('.role-btn').forEach(b => b.onclick = () => setRole(b.dataset.role));
+$('add-btn').onclick = addPipes;
+$('pipe-input').addEventListener('keydown', e => { if (e.key === 'Enter') addPipes(); });
+$('only-wait').onchange = render;
+$('day-prev').onclick = () => setShift(stepShift(view, -1));
+$('day-next').onclick = () => setShift(stepShift(view, 1));
+$('day-label').onclick = () => setShift(liveShift);
+
+// ===== ОТРИСОВКА =====
+function btn(p, r, label) {
+  const v = p[FIELD[r]], t = hhmm(p[FIELD[r].replace('_val', '_at')]);
+  return `<button data-id="${esc(p.id)}" data-r="${r}" data-v="${esc(v)}"
+    class="w-20 h-14 rounded-lg font-black text-xl flex flex-col items-center justify-center ${STYLES[v] || STYLES['-']} ${canEdit(r) ? 'active:scale-95' : 'opacity-60'}">
+    <span class="text-[10px] opacity-80 font-normal leading-tight">${label}${t ? ' · ' + t : ''}</span><span>${esc(v)}</span></button>`;
+}
+
+function render() {
+  const waiting = pipes.filter(p => p.mpd1_val === '-' || p.mpd2_val === '-').length;
+  $('counter').textContent = pipes.length ? `· всего ${pipes.length}, ждут ${waiting}` : '';
+  let view = pipes;
+  if ($('only-wait').checked && FIELD[role]) view = pipes.filter(p => p[FIELD[role]] === '-');
+  list.innerHTML = view.map(p => `
+    <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center justify-between gap-2">
+      <div data-edit="${esc(p.id)}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all py-1">${esc(p.pipe_number)}</div>
+      <div class="flex gap-2">${btn(p, 'mpd1', 'МПД-1')}${btn(p, 'mpd2', 'МПД-2')}</div>
+    </div>`).join('') || '<p class="text-center text-gray-400 py-8">Список пуст</p>';
+}
+
+// ===== СТАРТ =====
+function init() {
+  setRole(role);
+  setShift(view);
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (SUPABASE_URL.includes('YOUR-PROJECT')) { setStatus('Нет ключей', 'bg-red-600'); return; }
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  fetchPipes();
+  subscribe();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    const now = currentShift();
+    if (key(now) !== key(liveShift)) { const follow = key(view) === key(liveShift); liveShift = now; return setShift(follow ? now : view); }
+    fetchPipes();
+  });
+  window.addEventListener('online', fetchPipes);
+}
+init();
+</script>
+</body>
+</html>
