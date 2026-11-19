@@ -20,305 +20,327 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <style>
-  body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
-  input { -webkit-user-select: text; user-select: text; }
+  body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; padding-bottom: 72px; }
+  input, textarea { -webkit-user-select: text; user-select: text; }
 </style>
 </head>
-<body class="bg-gray-100 font-sans min-h-screen pb-12">
+<body class="bg-gray-100 font-sans min-h-screen">
 
-<header class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md">
-  <div class="flex justify-between items-center mb-2">
-    <h1 class="font-bold text-lg">Цех МПД / УЗК <span id="counter" class="text-xs font-normal text-slate-300 ml-1"></span></h1>
-    <span id="sync-status" class="text-xs px-2 py-1 bg-yellow-600 rounded">Подключение...</span>
-  </div>
-  <div class="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-lg text-center text-sm mb-2">
-    <button data-role="uzk" class="role-btn py-2 rounded">УЗК</button>
-    <button data-role="mpd1" class="role-btn py-2 rounded">МПД 1</button>
-    <button data-role="mpd2" class="role-btn py-2 rounded">МПД 2</button>
-  </div>
-  <div class="flex items-center justify-between bg-slate-900 rounded-lg text-sm">
-    <button id="day-prev" class="px-4 py-2 text-lg">‹</button>
-    <button id="day-label" class="flex-1 py-2 font-semibold"></button>
-    <button id="day-next" class="px-4 py-2 text-lg">›</button>
-  </div>
+<header class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md flex justify-between items-center">
+  <h1 class="font-bold text-base truncate"><span id="hdr">Цех МПД / УЗК</span></h1>
+  <span id="sync-status" class="text-xs px-2 py-1 bg-yellow-600 rounded shrink-0">Подключение...</span>
 </header>
-
 <div id="err-box" style="display:none" class="m-3 p-3 bg-red-100 text-red-800 text-sm rounded break-all"></div>
 
-<section id="uzk-panel" class="p-3 bg-white border-b shadow-sm">
-  <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Добавить трубу (УЗК)</label>
-  <div class="flex gap-2">
-    <input id="pipe-input" type="text" autocomplete="off" placeholder="Номер(а): пробел / запятая / новая строка"
-           class="flex-1 min-w-0 border-2 border-gray-300 p-3 rounded-lg text-lg font-bold uppercase focus:outline-none focus:border-blue-600">
-    <button id="add-btn" class="bg-blue-600 text-white px-5 font-bold rounded-lg text-lg active:bg-blue-700">+</button>
+<section id="start" class="hidden p-3 max-w-md mx-auto space-y-4">
+  <div class="bg-white rounded-xl p-4 shadow-sm space-y-2">
+    <h2 class="font-bold text-slate-700">Создать смену (УЗК)</h2>
+    <input id="c-name" placeholder="Название (необязательно)" class="w-full border-2 p-3 rounded-lg">
+    <input id="c-pass" placeholder="Придумайте пароль смены" class="w-full border-2 p-3 rounded-lg">
+    <button data-act="create" class="w-full py-3 bg-blue-600 text-white font-bold rounded-lg">Создать</button>
   </div>
-  <p id="add-msg" class="text-xs text-gray-500 mt-1 h-4"></p>
+  <div class="bg-white rounded-xl p-4 shadow-sm space-y-2">
+    <h2 class="font-bold text-slate-700">Войти в смену</h2>
+    <input id="j-pass" placeholder="Пароль смены" class="w-full border-2 p-3 rounded-lg">
+    <div id="j-roles" class="grid grid-cols-3 gap-1 text-center font-semibold"></div>
+    <button data-act="join" class="w-full py-3 bg-emerald-600 text-white font-bold rounded-lg">Войти</button>
+  </div>
 </section>
 
-<div class="px-3 pt-2 max-w-md mx-auto">
-  <label class="flex items-center gap-2 text-sm text-gray-600">
-    <input type="checkbox" id="only-wait" class="w-5 h-5"> Только ожидающие моей проверки
-  </label>
-</div>
+<main id="app" class="hidden p-2 max-w-md mx-auto">
+  <div id="v-list" class="space-y-2"></div>
+  <div id="v-stat" class="hidden space-y-3"></div>
+  <div id="v-sort" class="hidden space-y-3"></div>
+  <div id="v-set" class="hidden space-y-3"></div>
+</main>
+<nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white grid text-center text-xs" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
 
-<main id="pipes-list" class="p-2 max-w-md mx-auto space-y-2"></main>
-
-<!-- Выбор результата -->
-<div id="defect-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3">
-  <div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-3">
-    <h3 class="font-bold text-center text-gray-700 text-lg">Результат контроля</h3>
-    <div class="grid gap-2">
-      <button data-val="N"   class="def-btn w-full py-4 bg-emerald-600 text-white font-bold text-xl rounded-xl">N — Годная</button>
-      <button data-val="Н"   class="def-btn w-full py-4 bg-red-600 text-white font-bold text-xl rounded-xl">Н — Наружный</button>
-      <button data-val="В"   class="def-btn w-full py-4 bg-orange-600 text-white font-bold text-xl rounded-xl">В — Внутренний</button>
-      <button data-val="ЗАК" class="def-btn w-full py-4 bg-purple-700 text-white font-bold text-xl rounded-xl">ЗАК — Закалочная трещина</button>
-      <button data-val="-"   class="def-btn w-full py-3 bg-gray-300 text-gray-700 font-bold text-lg rounded-xl">Сбросить (-)</button>
-    </div>
-    <button id="cancel-btn" class="w-full py-2 text-gray-500 font-semibold">Отмена</button>
-  </div>
-</div>
-
-<!-- Правка номера (только УЗК) -->
-<div id="edit-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3">
-  <div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-3">
-    <h3 class="font-bold text-center text-gray-700 text-lg">Правка номера трубы</h3>
-    <input id="edit-input" type="text" autocomplete="off"
-           class="w-full border-2 border-gray-300 p-3 rounded-lg text-xl font-bold uppercase focus:outline-none focus:border-blue-600">
-    <div class="grid grid-cols-2 gap-2">
-      <button id="edit-save" class="py-3 bg-blue-600 text-white font-bold rounded-xl">Сохранить</button>
-      <button id="edit-del" class="py-3 bg-red-600 text-white font-bold rounded-xl">Удалить</button>
-    </div>
-    <button id="edit-cancel" class="w-full py-2 text-gray-500 font-semibold">Отмена</button>
-  </div>
-</div>
+<div id="modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3"></div>
+<div id="toast" class="hidden fixed bottom-20 inset-x-4 z-50 bg-slate-900 text-white text-sm p-3 rounded-lg text-center"></div>
 
 <script>
-// ===== НАСТРОЙКИ =====
-const SUPABASE_URL = (window.APP_CONFIG || {}).url || '';
-const SUPABASE_ANON_KEY = (window.APP_CONFIG || {}).key || '';
-const SHIFT_START_HOUR = 7;          // день 07–19, ночь 19–07 (как в SQL)
-const TZ = 'Europe/Kyiv';
+// В, Н, П — кириллица (коды заданы явно); N — латиница
+const V = '\u0412', H = '\u041d', P = '\u041f', L = [V, H, P];
+const CY = ['-', 'N', H, V, 'ЗАК'];
+const MC = { '-': 'bg-gray-200 text-gray-600', N: 'bg-emerald-600 text-white', [H]: 'bg-red-600 text-white', [V]: 'bg-orange-600 text-white', 'ЗАК': 'bg-purple-700 text-white' };
+const CATS = [V, H, P, V + H, V + P, H + P, V + H + P];
+const ROLES = { uzk: 'УЗК', mpd1: 'МПД 1', mpd2: 'МПД 2' };
 
-// ===== СОСТОЯНИЕ =====
 const $ = id => document.getElementById(id);
-const STYLES = {
-  '-':  'bg-gray-200 text-gray-600',
-  'N':  'bg-emerald-600 text-white',
-  'Н':  'bg-red-600 text-white',
-  'В':  'bg-orange-600 text-white',
-  'ЗАК':'bg-purple-700 text-white'
-};
-const VALID = Object.keys(STYLES);
-const FIELD = { mpd1: 'mpd1_val', mpd2: 'mpd2_val' };
-
-let db = null;
-let role = localStorage.getItem('role') || 'uzk';
-let pipes = [];
-let target = null;     // {id, r} для выбора результата
-let editId = null;     // id трубы в правке
-
-const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} };
-const setStatus = (t, c) => { const b = $('sync-status'); b.textContent = t; b.className = 'text-xs px-2 py-1 rounded ' + c; };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+const setStatus = (t, c) => { const b = $('sync-status'); b.textContent = t; b.className = 'text-xs px-2 py-1 rounded shrink-0 ' + c; };
 const hhmm = iso => iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
+let tt; const toast = m => { const t = $('toast'); t.textContent = m; t.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(() => t.classList.add('hidden'), 3500); };
+const showErr = m => { const b = $('err-box'); b.style.display = m ? 'block' : 'none'; b.textContent = m || ''; };
 
-// ===== СМЕНЫ (D = день 07–19, N = ночь 19–07) =====
-function currentShift() {
-  const s = new Date().toLocaleString('sv-SE', { timeZone: TZ });   // "YYYY-MM-DD HH:MM:SS"
-  const d = new Date(s.replace(' ', 'T') + 'Z');
-  const hour = d.getUTCHours();
-  d.setUTCHours(hour - SHIFT_START_HOUR);
-  return { date: d.toISOString().slice(0, 10), type: (hour >= 7 && hour < 19) ? 'D' : 'N' };
+let db, pipes = [], sorts = [], tab = 'list';
+let S = JSON.parse(localStorage.getItem('ses') || 'null') || { sh: null, role: 'uzk', pass: '' };
+let cols = Object.assign({ uzk: 1, minus: 1, mpd1: 1, mpd2: 1, curve: 0 }, JSON.parse(localStorage.getItem('cols') || '{}'));
+const saveS = () => localStorage.setItem('ses', JSON.stringify(S));
+const can = c => S.role === 'uzk' || S.role === c;
+
+const modal = h => { $('modal').innerHTML = '<div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-2 max-h-[90vh] overflow-y-auto">' + h + '</div>'; $('modal').classList.remove('hidden'); };
+const closeM = () => $('modal').classList.add('hidden');
+const mb = (act, txt, cls, extra) => `<button data-act="${act}" ${extra || ''} class="w-full py-3 font-bold text-lg rounded-xl ${cls}">${txt}</button>`;
+
+// ===== Старт / вход =====
+function showStart() {
+  $('start').classList.remove('hidden'); $('app').classList.add('hidden'); $('nav').classList.add('hidden'); $('hdr').textContent = 'Цех МПД / УЗК';
+  $('j-roles').innerHTML = Object.keys(ROLES).map(r => `<button data-act="role" data-r="${r}" class="py-2 rounded ${r === S.role ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">${ROLES[r]}</button>`).join('');
 }
-function addDays(date, n) { const d = new Date(date + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
-const fmtDate = d => d.split('-').reverse().join('.');
-const key = s => s.date + s.type;                                   // 'D' < 'N' — порядок верный
-const stepShift = (s, dir) => dir > 0
-  ? (s.type === 'D' ? { date: s.date, type: 'N' } : { date: addDays(s.date, 1), type: 'D' })
-  : (s.type === 'N' ? { date: s.date, type: 'D' } : { date: addDays(s.date, -1), type: 'N' });
-
-let liveShift = currentShift();
-let view = liveShift;
-
-function setShift(s) {
-  if (key(s) > key(liveShift)) return;              // в будущее не листаем
-  view = s;
-  const live = key(s) === key(liveShift);
-  $('day-label').textContent = `${s.type === 'D' ? '☀️ День 07–19' : '🌙 Ночь 19–07'} · ${fmtDate(s.date)}${live ? ' · сейчас' : ''}`;
-  $('day-next').style.opacity = live ? .3 : 1;
-  pipes = []; render();
-  if (db) fetchPipes();
+async function createShift() {
+  const pass = $('c-pass').value.trim(); if (pass.length < 3) return toast('Пароль — минимум 3 символа');
+  const name = $('c-name').value.trim() || 'Смена ' + new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const { data, error } = await db.rpc('create_shift', { p_name: name, p_pass: pass });
+  if (error) return toast(/pass_taken/.test(error.message) ? 'Такой пароль уже занят активной сменой' : error.message);
+  S = { sh: { id: data, name }, role: 'uzk', pass }; saveS(); tab = 'sort'; enter();
 }
-const inView = p => p.shift_date === view.date && p.shift_type === view.type;
-
-// ===== РОЛИ =====
-function setRole(r) {
-  role = r;
-  localStorage.setItem('role', r);
-  document.querySelectorAll('.role-btn').forEach(b => {
-    b.className = 'role-btn py-2 rounded ' + (b.dataset.role === r ? 'bg-blue-600 text-white font-bold' : 'text-gray-400');
-  });
-  $('uzk-panel').style.display = r === 'uzk' ? 'block' : 'none';
-  render();
+async function joinShift() {
+  const pass = $('j-pass').value.trim(); if (!pass) return;
+  const { data, error } = await db.rpc('join_shift', { p_pass: pass });
+  if (error) return toast(error.message);
+  if (!data || !data.length) return toast('Смена с таким паролем не найдена');
+  S = { sh: data[0], role: S.role, pass: '' }; saveS(); tab = 'list'; enter();
 }
-const canEdit = r => role === 'uzk' || role === r;
-
-// ===== ДАННЫЕ =====
-async function fetchPipes() {
-  const v = view;
-  const { data, error } = await db.from('pipes_simple').select('*')
-    .eq('shift_date', v.date).eq('shift_type', v.type).order('created_at', { ascending: false });
-  if (v !== view) return;                          // пока грузилось, сменили смену
-  if (error) { setStatus('Ошибка загрузки', 'bg-red-600'); return; }
-  pipes = data; render();
+function leave() { S.sh = null; saveS(); pipes = []; sorts = []; closeM(); showStart(); }
+async function enter() {
+  $('start').classList.add('hidden'); $('app').classList.remove('hidden'); $('nav').classList.remove('hidden');
+  $('hdr').textContent = S.sh.name + ' · ' + ROLES[S.role];
+  $('nav').style.gridTemplateColumns = `repeat(${S.role === 'uzk' ? 4 : 3},1fr)`;
+  await fetchAll(); setTab(tab);
 }
 
+// ===== Данные =====
+async function fetchAll() {
+  const id = S.sh.id;
+  const [a, b] = await Promise.all([
+    db.from('sortaments').select('*').eq('shift_id', id).order('created_at'),
+    db.from('pipes').select('*').eq('shift_id', id).order('seq').order('created_at')
+  ]);
+  const er = a.error || b.error;
+  if (er) { setStatus('Ошибка загрузки', 'bg-red-600'); return showErr((er.code || '') + ' ' + er.message); }
+  showErr(''); sorts = a.data; pipes = b.data; render();
+}
 function subscribe() {
-  db.channel('pipes_simple_ch')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'pipes_simple' }, p => {
-      if (p.eventType === 'DELETE') {
-        pipes = pipes.filter(x => x.id !== p.old.id);
-      } else if (inView(p.new)) {
-        const i = pipes.findIndex(x => x.id === p.new.id);
-        if (i !== -1) pipes[i] = p.new; else pipes.unshift(p.new);
-      }
+  const up = (arr, row) => { const i = arr.findIndex(x => x.id === row.id); i >= 0 ? arr[i] = row : arr.push(row); };
+  db.channel('mpd_ch')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pipes' }, p => {
+      if (!S.sh) return;
+      if (p.eventType === 'DELETE') pipes = pipes.filter(x => x.id !== p.old.id);
+      else if (p.new.shift_id === S.sh.id) { up(pipes, p.new); pipes.sort((a, b) => a.seq - b.seq || a.created_at.localeCompare(b.created_at)); }
+      render();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'sortaments' }, p => {
+      if (!S.sh) return;
+      if (p.eventType === 'DELETE') { sorts = sorts.filter(x => x.id !== p.old.id); pipes = pipes.filter(x => x.sort_id !== p.old.id); }
+      else if (p.new.shift_id === S.sh.id) up(sorts, p.new);
       render();
     })
     .subscribe(st => {
-      if (st === 'SUBSCRIBED') { setStatus('Онлайн', 'bg-emerald-600'); fetchPipes(); }
+      if (st === 'SUBSCRIBED') { setStatus('Онлайн', 'bg-emerald-600'); if (S.sh) fetchAll(); }
       else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(st)) setStatus('Нет связи', 'bg-red-600');
     });
 }
-
-async function addPipes() {
-  const msg = t => { $('add-msg').textContent = t; setTimeout(() => $('add-msg').textContent = '', 4000); };
-  if (key(view) !== key(liveShift)) return msg('Добавлять можно только в текущую смену');
-  const nums = [...new Set($('pipe-input').value.toUpperCase().split(/[\s,;]+/).filter(Boolean))];
-  if (!nums.length) return;
-  const existing = new Set(pipes.map(p => p.pipe_number));
-  const fresh = nums.filter(n => !existing.has(n));
-  if (fresh.length) {
-    const { error } = await db.from('pipes_simple')
-      .upsert(fresh.map(n => ({ pipe_number: n })), { onConflict: 'pipe_number,shift_date,shift_type', ignoreDuplicates: true });
-    if (error) return msg('Ошибка: ' + error.message);
-  }
-  $('pipe-input').value = '';
-  const dup = nums.length - fresh.length;
-  msg(`Добавлено: ${fresh.length}` + (dup ? `, дубли пропущены: ${dup}` : ''));
-  buzz(30);
-}
-
-async function setValue(id, r, val) {
-  if (!VALID.includes(val)) return;
-  const col = FIELD[r], p = pipes.find(x => x.id === id);
-  const old = p ? { v: p[col], t: p[col.replace('_val', '_at')] } : null;
-  if (p) { p[col] = val; p[col.replace('_val', '_at')] = val === '-' ? null : new Date().toISOString(); render(); }
-  const { error } = await db.from('pipes_simple').update({ [col]: val }).eq('id', id);
-  if (error && p) { p[col] = old.v; p[col.replace('_val', '_at')] = old.t; render(); setStatus('Не сохранилось!', 'bg-red-600'); buzz([100, 50, 100]); }
-}
-
-// ===== ПРАВКА / УДАЛЕНИЕ (УЗК) =====
-function openEdit(id) {
+async function patch(id, obj, local) {
   const p = pipes.find(x => x.id === id); if (!p) return;
-  editId = id; $('edit-input').value = p.pipe_number;
-  $('edit-modal').classList.remove('hidden');
+  const old = {}; Object.keys(obj).concat(Object.keys(local || {})).forEach(k => old[k] = p[k]);
+  Object.assign(p, obj, local); render();
+  const { error } = await db.from('pipes').update(obj).eq('id', id);
+  if (error) { Object.assign(p, old); render(); toast('Не сохранилось: ' + error.message); buzz([100, 50, 100]); }
 }
-function closeEdit() { editId = null; $('edit-modal').classList.add('hidden'); }
+const setMpd = (id, c, v) => patch(id, { [c + '_val']: v }, { [c + '_at']: v === '-' ? null : new Date().toISOString() });
+const sortOf = id => sorts.find(s => s.id === id);
 
-$('edit-save').onclick = async () => {
-  const val = $('edit-input').value.trim().toUpperCase();
-  const p = pipes.find(x => x.id === editId);
-  if (!val || !p) return closeEdit();
-  if (pipes.some(x => x.id !== editId && x.pipe_number === val)) { alert('Такой номер уже есть в этой смене'); return; }
-  const old = p.pipe_number; p.pipe_number = val; render();
-  const { error } = await db.from('pipes_simple').update({ pipe_number: val }).eq('id', editId);
-  if (error) { p.pipe_number = old; render(); alert('Ошибка: ' + error.message); }
-  closeEdit();
-};
-$('edit-del').onclick = async () => {
-  const p = pipes.find(x => x.id === editId); if (!p) return closeEdit();
-  if (!confirm(`Удалить трубу ${p.pipe_number}?`)) return;
-  const id = editId; closeEdit();
-  const { error } = await db.from('pipes_simple').delete().eq('id', id);
-  if (error) alert('Ошибка: ' + error.message); else { pipes = pipes.filter(x => x.id !== id); render(); }
-};
-$('edit-cancel').onclick = closeEdit;
-
-// ===== ВВОД (тап / долгое нажатие) =====
-function openModal(id, r) { target = { id, r }; $('defect-modal').classList.remove('hidden'); }
-function closeModal() { target = null; $('defect-modal').classList.add('hidden'); }
-
-let pressTimer = null, longFired = false;
-const list = $('pipes-list');
-list.addEventListener('pointerdown', e => {
-  const b = e.target.closest('button[data-id]'); if (!b) return;
-  longFired = false;
-  pressTimer = setTimeout(() => {
-    longFired = true; buzz(40);
-    if (canEdit(b.dataset.r)) openModal(b.dataset.id, b.dataset.r);
-  }, 500);
-});
-['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => list.addEventListener(ev, () => clearTimeout(pressTimer)));
-list.addEventListener('click', e => {
-  const num = e.target.closest('[data-edit]');
-  if (num) { if (role === 'uzk') openEdit(num.dataset.edit); return; }
-  const b = e.target.closest('button[data-id]'); if (!b || longFired) return;
-  const { id, r, v } = b.dataset;
-  if (!canEdit(r)) return;
-  if (v === '-') { buzz(20); setValue(id, r, 'N'); } else openModal(id, r);
-});
-document.querySelectorAll('.def-btn').forEach(b => b.addEventListener('click', () => {
-  if (target) { setValue(target.id, target.r, b.dataset.val); buzz(20); }
-  closeModal();
-}));
-$('cancel-btn').onclick = closeModal;
-$('defect-modal').addEventListener('click', e => { if (e.target.id === 'defect-modal') closeModal(); });
-document.querySelectorAll('.role-btn').forEach(b => b.onclick = () => setRole(b.dataset.role));
-$('add-btn').onclick = addPipes;
-$('pipe-input').addEventListener('keydown', e => { if (e.key === 'Enter') addPipes(); });
-$('only-wait').onchange = render;
-$('day-prev').onclick = () => setShift(stepShift(view, -1));
-$('day-next').onclick = () => setShift(stepShift(view, 1));
-$('day-label').onclick = () => setShift(liveShift);
-
-// ===== ОТРИСОВКА =====
-function btn(p, r, label) {
-  const v = p[FIELD[r]], t = hhmm(p[FIELD[r].replace('_val', '_at')]);
-  return `<button data-id="${esc(p.id)}" data-r="${r}" data-v="${esc(v)}"
-    class="w-20 h-14 rounded-lg font-black text-xl flex flex-col items-center justify-center ${STYLES[v] || STYLES['-']} ${canEdit(r) ? 'active:scale-95' : 'opacity-60'}">
-    <span class="text-[10px] opacity-80 font-normal leading-tight">${label}${t ? ' · ' + t : ''}</span><span>${esc(v)}</span></button>`;
+// ===== Вкладки =====
+function setTab(t) {
+  tab = t;
+  ['list', 'stat', 'sort', 'set'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
+  const items = [['list', '📋', 'Список'], ['stat', '📊', 'Отчёт']].concat(S.role === 'uzk' ? [['sort', '➕', 'Сортамент']] : []).concat([['set', '⚙️', 'Опции']]);
+  $('nav').innerHTML = items.map(([k, i, n]) => `<button data-tab="${k}" class="py-2 ${k === t ? 'bg-blue-600 font-bold' : ''}"><div class="text-lg">${i}</div>${n}</button>`).join('');
+  render();
 }
+function render() { if (S.sh) ({ list: rList, stat: rStat, sort: rSort, set: rSet })[tab](); }
 
-function render() {
-  const waiting = pipes.filter(p => p.mpd1_val === '-' || p.mpd2_val === '-').length;
-  $('counter').textContent = pipes.length ? `· всего ${pipes.length}, ждут ${waiting}` : '';
-  let view = pipes;
-  if ($('only-wait').checked && FIELD[role]) view = pipes.filter(p => p[FIELD[role]] === '-');
-  list.innerHTML = view.map(p => `
-    <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center justify-between gap-2">
-      <div data-edit="${esc(p.id)}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all py-1">${esc(p.pipe_number)}</div>
-      <div class="flex gap-2">${btn(p, 'mpd1', 'МПД-1')}${btn(p, 'mpd2', 'МПД-2')}</div>
-    </div>`).join('') || '<p class="text-center text-gray-400 py-8">Список пуст</p>';
+// ===== Список =====
+function cell(p, c, label, val, cls) {
+  return `<button data-id="${p.id}" data-c="${c}" class="flex-1 h-14 rounded-lg flex flex-col items-center justify-center ${cls} active:scale-95"><span class="text-[10px] opacity-80 font-normal leading-tight">${label}</span><span class="font-black text-lg leading-tight">${esc(val)}</span></button>`;
 }
-
-// ===== СТАРТ =====
-function init() {
-  setRole(role);
-  setShift(view);
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(SUPABASE_URL) || SUPABASE_ANON_KEY.length < 20) { setStatus('Нет ключей', 'bg-red-600'); return; }
-  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  fetchPipes();
-  subscribe();
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
-    const now = currentShift();
-    if (key(now) !== key(liveShift)) { const follow = key(view) === key(liveShift); liveShift = now; return setShift(follow ? now : view); }
-    fetchPipes();
+function rList() {
+  let last = null, h = '';
+  if (!pipes.length) h = '<p class="text-center text-gray-400 py-8">Список пуст' + (S.role === 'uzk' ? '. Добавьте сортамент во вкладке «Сортамент».' : '.') + '</p>';
+  pipes.forEach(p => {
+    if (p.sort_id !== last) {
+      last = p.sort_id; const s = sortOf(p.sort_id);
+      if (s) h += `<div class="text-xs text-slate-500 font-semibold px-1 pt-2">${esc(s.diameter)} x ${esc(s.wall)} ${esc(s.grade)}${s.plavka ? ' · пл. ' + esc(s.plavka) : ''}${s.party ? ' · парт. ' + esc(s.party) : ''}</div>`;
+    }
+    const dim = c => can(c) ? '' : ' opacity-60';
+    let b = '';
+    if (cols.uzk) b += cell(p, 'uzk', 'УЗК', p.uzk_def, (p.uzk_def === 'N' ? MC.N : 'bg-red-600 text-white') + dim('uzk'));
+    if (cols.minus) b += cell(p, 'minus', 'Минус', p.uzk_minus == null ? 'N' : p.uzk_minus, (p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white') + dim('uzk'));
+    if (cols.mpd1) b += cell(p, 'mpd1', 'МПД-1' + (p.mpd1_at ? ' ' + hhmm(p.mpd1_at) : ''), p.mpd1_val, MC[p.mpd1_val] + dim('mpd1'));
+    if (cols.mpd2) b += cell(p, 'mpd2', 'МПД-2' + (p.mpd2_at ? ' ' + hhmm(p.mpd2_at) : ''), p.mpd2_val, MC[p.mpd2_val] + dim('mpd2'));
+    if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', (p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600') + dim('uzk'));
+    h += `<div class="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+      <div class="flex items-center gap-2 mb-1"><span class="w-9 text-right font-bold text-slate-400">${p.seq}</span>
+      <span data-edit="${p.id}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all">${esc(p.pipe_number)}</span></div>
+      <div class="flex gap-1">${b}</div></div>`;
   });
-  window.addEventListener('online', fetchPipes);
+  $('v-list').innerHTML = h;
 }
-try { init(); } catch (e) { setStatus('ОШИБКА', 'bg-red-600'); $('err-box').style.display = 'block'; $('err-box').textContent = e.message; }
+
+// Тап = смена значения, долгое нажатие = выбор из списка
+let pt = null, lf = false;
+const lst = $('v-list');
+lst.addEventListener('pointerdown', e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return; lf = false;
+  pt = setTimeout(() => { lf = true; buzz(40); mpdModal(b.dataset.id, b.dataset.c); }, 500);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => lst.addEventListener(ev, () => clearTimeout(pt)));
+lst.addEventListener('click', e => {
+  const n = e.target.closest('[data-edit]'); if (n) { if (S.role === 'uzk') editModal(n.dataset.edit); return; }
+  const b = e.target.closest('button[data-id]'); if (!b || lf) return;
+  const { id, c } = b.dataset, p = pipes.find(x => x.id === id); if (!p) return;
+  buzz(20);
+  if (c === 'mpd1' || c === 'mpd2') { if (!can(c)) return; const i = CY.indexOf(p[c + '_val']); setMpd(id, c, i >= 4 ? 'N' : CY[i + 1]); }
+  else if (S.role !== 'uzk') return;
+  else if (c === 'uzk') uzkModal(id);
+  else if (c === 'minus') minusModal(id);
+  else if (c === 'curve') patch(id, { curved: !p.curved });
+});
+
+function mpdModal(id, c) {
+  if ((c !== 'mpd1' && c !== 'mpd2') || !can(c)) return;
+  const nm = { N: 'N — Годная', [H]: H + ' — Наружный', [V]: V + ' — Внутренний', 'ЗАК': 'ЗАК — Закалочная', '-': 'Сбросить (-)' };
+  modal('<h3 class="font-bold text-center text-lg">Результат ' + ROLES[c] + '</h3>' + CY.map(v => mb('mpdset', nm[v], MC[v], `data-id="${id}" data-c="${c}" data-v="${v}"`)).join('') + mb('close', 'Отмена', 'text-gray-500'));
+}
+function uzkModal(id) {
+  const p = pipes.find(x => x.id === id); if (!p) return;
+  const cur = p.uzk_def === 'N' ? '' : p.uzk_def;
+  modal('<h3 class="font-bold text-center text-lg">Отсорт УЗК · №' + p.seq + '</h3><div class="grid grid-cols-3 gap-2">' +
+    L.map(l => mb('uzkt', l, cur.includes(l) ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700', `data-id="${id}" data-l="${l}"`)).join('') + '</div>' +
+    mb('uzkset', 'N — годная', MC.N, `data-id="${id}"`) + mb('close', 'Готово', 'bg-slate-800 text-white'));
+}
+function minusModal(id) {
+  const p = pipes.find(x => x.id === id); if (!p) return;
+  modal('<h3 class="font-bold text-center text-lg">Минус · фактическая стенка</h3>' +
+    `<input id="m-val" type="number" step="0.01" inputmode="decimal" value="${p.uzk_minus == null ? '' : p.uzk_minus}" class="w-full border-2 p-3 rounded-lg text-2xl font-bold text-center">` +
+    mb('minsave', 'Сохранить', 'bg-amber-500 text-white', `data-id="${id}"`) + mb('minreset', 'N (сброс)', MC.N, `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
+}
+function editModal(id) {
+  const p = pipes.find(x => x.id === id); if (!p) return;
+  modal('<h3 class="font-bold text-center text-lg">Труба №' + p.seq + '</h3>' +
+    `<input id="e-num" value="${esc(p.pipe_number)}" class="w-full border-2 p-3 rounded-lg text-xl font-bold uppercase">` +
+    mb('esave', 'Сохранить номер', 'bg-blue-600 text-white', `data-id="${id}"`) + mb('edel', 'Удалить трубу', 'bg-red-600 text-white', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
+}
+
+// ===== Сортамент (УЗК) =====
+function rSort() {
+  const next = pipes.reduce((m, p) => Math.max(m, p.seq), 0) + 1;
+  let h = mb('sortform', '+ Добавить сортамент', 'bg-blue-600 text-white', `data-next="${next}"`);
+  sorts.forEach(s => {
+    const ps = pipes.filter(p => p.sort_id === s.id);
+    h += `<div class="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2"><div class="text-sm"><div class="font-bold">${esc(s.diameter)} x ${esc(s.wall)} ${esc(s.grade)}</div>
+      <div class="text-gray-500">пл. ${esc(s.plavka || '—')} · парт. ${esc(s.party || '—')} · труб ${ps.length}${ps.length ? ' (№' + ps[0].seq + '–' + ps[ps.length - 1].seq + ')' : ''}</div></div>
+      <button data-act="sortdel" data-id="${s.id}" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm">Удалить</button></div>`;
+  });
+  $('v-sort').innerHTML = h;
+}
+function sortForm(next) {
+  const f = (id, ph, ex) => `<input id="${id}" placeholder="${ph}" ${ex || ''} class="w-full border-2 p-3 rounded-lg">`;
+  modal('<h3 class="font-bold text-center text-lg">Новый сортамент</h3>' + f('f-p', 'Плавка') + f('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"') + f('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"') +
+    f('f-g', 'Марка стали (N80Q)') + f('f-n', 'Номер партии') +
+    '<label class="block text-xs text-gray-600">Нумерация в списке начинается с №</label>' + f('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
+    '<textarea id="f-nums" rows="5" placeholder="Номера труб: через пробел, запятую или с новой строки" class="w-full border-2 p-3 rounded-lg uppercase"></textarea>' +
+    mb('sortsave', 'Добавить', 'bg-blue-600 text-white') + mb('close', 'Отмена', 'text-gray-500'));
+}
+async function sortSave() {
+  const g = id => $(id).value.trim();
+  const nums = [...new Set(g('f-nums').toUpperCase().split(/[\s,;]+/).filter(Boolean))];
+  if (!g('f-d') || !g('f-w') || !nums.length) return toast('Нужны диаметр, стенка и номера труб');
+  const have = new Set(pipes.map(p => p.pipe_number)), fresh = nums.filter(n => !have.has(n));
+  if (!fresh.length) return toast('Все номера уже есть в смене');
+  const start = parseInt(g('f-s')) || 1;
+  const { data: so, error } = await db.from('sortaments').insert({ shift_id: S.sh.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n') }).select().single();
+  if (error) return toast(error.message);
+  const { error: e2 } = await db.from('pipes').insert(fresh.map((n, i) => ({ shift_id: S.sh.id, sort_id: so.id, seq: start + i, pipe_number: n })));
+  if (e2) { await db.from('sortaments').delete().eq('id', so.id); return toast(e2.message); }
+  closeM(); toast(`Добавлено труб: ${fresh.length}` + (nums.length - fresh.length ? `, дублей пропущено: ${nums.length - fresh.length}` : '')); await fetchAll(); setTab('list');
+}
+
+// ===== Отчёт =====
+function statOf(arr, s) {
+  let bad = 0, both = 0, minus = 0, curved = 0; const cat = {};
+  arr.forEach(p => {
+    const l = p.uzk_def !== 'N', m = p.uzk_minus != null; if (p.curved) curved++;
+    if (l || m) bad++;
+    if (l && m) both++; else if (l) cat[p.uzk_def] = (cat[p.uzk_def] || 0) + 1; else if (m) minus++;
+  });
+  const n = arr.length, good = n - bad, parts = CATS.filter(k => cat[k]).map(k => k + ' ' + cat[k]); parts.push('S- ' + minus);
+  return [s ? `${s.diameter} x ${s.wall} ${s.grade || ''}`.trim() : 'Итого за смену',
+    `Подано - ${n}`, `Отсортов - ${bad}`, `Годных - ${good} (${n ? Math.round(good / n * 100) : 0}%)`, parts.join(', '), `Совместных - ${both};`]
+    .concat(cols.curve ? [`Кривых - ${curved};`] : []).join('\n');
+}
+const reportText = () => 'КНК за смену:\n' + sorts.map(s => statOf(pipes.filter(p => p.sort_id === s.id), s)).concat(sorts.length > 1 ? [statOf(pipes)] : []).join('\n\n');
+function rStat() {
+  $('v-stat').innerHTML = pipes.length
+    ? `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-base" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться', 'bg-blue-600 text-white') + mb('copy', 'Копировать', 'bg-gray-300 text-gray-800')
+    : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>';
+}
+async function share(copyOnly) {
+  const t = reportText();
+  if (!copyOnly && navigator.share) { try { await navigator.share({ text: t }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(t); toast('Скопировано'); } catch (e) { toast('Не удалось скопировать'); }
+}
+
+// ===== Опции =====
+function rSet() {
+  const ck = (k, n) => `<label class="flex items-center gap-3 py-2"><input type="checkbox" data-col="${k}" ${cols[k] ? 'checked' : ''} class="w-6 h-6"> ${n}</label>`;
+  $('v-set').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">Показывать колонки (на этом телефоне)</h3>${ck('uzk', 'УЗК — отсорт')}${ck('minus', 'УЗК — минус (стенка)')}${ck('mpd1', 'МПД 1')}${ck('mpd2', 'МПД 2')}${ck('curve', 'Кривая')}</div>
+  <div class="bg-white rounded-xl p-4 shadow-sm text-sm space-y-1"><div><b>Смена:</b> ${esc(S.sh.name)}</div><div><b>Роль:</b> ${ROLES[S.role]}</div>${S.pass ? '<div><b>Пароль для коллег:</b> ' + esc(S.pass) + '</div>' : ''}</div>` +
+    (S.role === 'uzk' ? mb('closeshift', 'Завершить смену', 'bg-red-600 text-white') : '') + mb('leave', 'Выйти из смены', 'bg-gray-300 text-gray-800');
+}
+
+// ===== Кнопки =====
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-tab]'); if (t) return setTab(t.dataset.tab);
+  const b = e.target.closest('[data-act]'); if (!b) return; const d = b.dataset;
+  switch (d.act) {
+    case 'create': return createShift();
+    case 'join': return joinShift();
+    case 'role': S.role = d.r; return showStart();
+    case 'close': return closeM();
+    case 'mpdset': setMpd(d.id, d.c, d.v); return closeM();
+    case 'uzkt': { const p = pipes.find(x => x.id === d.id); const cur = p.uzk_def === 'N' ? '' : p.uzk_def; const nw = L.filter(l => cur.includes(l) !== (l === d.l)).join(''); await patch(d.id, { uzk_def: nw || 'N' }); return uzkModal(d.id); }
+    case 'uzkset': patch(d.id, { uzk_def: 'N' }); return closeM();
+    case 'minsave': { const v = parseFloat($('m-val').value.replace(',', '.')); if (!(v > 0)) return toast('Введите толщину числом'); patch(d.id, { uzk_minus: v }); return closeM(); }
+    case 'minreset': patch(d.id, { uzk_minus: null }); return closeM();
+    case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (pipes.some(x => x.id !== d.id && x.pipe_number === v)) return toast('Такой номер уже есть'); patch(d.id, { pipe_number: v }); return closeM(); }
+    case 'edel': { if (!confirm('Удалить трубу?')) return; closeM(); const { error } = await db.from('pipes').delete().eq('id', d.id); if (error) return toast(error.message); pipes = pipes.filter(x => x.id !== d.id); return render(); }
+    case 'sortform': return sortForm(d.next);
+    case 'sortsave': return sortSave();
+    case 'sortdel': { if (!confirm('Удалить сортамент вместе со всеми его трубами?')) return; const { error } = await db.from('sortaments').delete().eq('id', d.id); if (error) return toast(error.message); return fetchAll(); }
+    case 'share': return share(false);
+    case 'copy': return share(true);
+    case 'closeshift': { if (!confirm('Завершить смену? Новые коллеги по паролю уже не смогут войти.')) return; const { error } = await db.rpc('close_shift', { p_id: S.sh.id }); return error ? toast(error.message) : toast('Смена закрыта для новых входов'); }
+    case 'leave': return leave();
+  }
+});
+document.addEventListener('change', e => { const k = e.target.dataset.col; if (k) { cols[k] = e.target.checked ? 1 : 0; localStorage.setItem('cols', JSON.stringify(cols)); } });
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeM(); });
+
+// ===== Старт =====
+function init() {
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  const c = window.APP_CONFIG || {};
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(c.url || '') || (c.key || '').length < 20) { setStatus('Нет ключей', 'bg-red-600'); return; }
+  db = window.supabase.createClient(c.url, c.key);
+  subscribe();
+  S.sh ? enter() : showStart();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.sh) fetchAll(); });
+  window.addEventListener('online', () => { if (S.sh) fetchAll(); });
+}
+try { init(); } catch (e) { setStatus('ОШИБКА', 'bg-red-600'); showErr(e.message); }
 </script>
 </body>
 </html>
