@@ -8,6 +8,15 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Контроль МПД / УЗК</title>
+<script>
+  window.addEventListener('error', function (e) {
+    var b = document.getElementById('sync-status');
+    if (b) { b.textContent = 'ОШИБКА СКРИПТА'; b.className = 'text-xs px-2 py-1 bg-red-600 rounded'; }
+    var m = document.getElementById('err-box');
+    if (m) { m.style.display = 'block'; m.textContent = (e.message || 'error') + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : ''); }
+  });
+</script>
+<script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <style>
@@ -33,6 +42,8 @@
     <button id="day-next" class="px-4 py-2 text-lg">›</button>
   </div>
 </header>
+
+<div id="err-box" style="display:none" class="m-3 p-3 bg-red-100 text-red-800 text-sm rounded break-all"></div>
 
 <section id="uzk-panel" class="p-3 bg-white border-b shadow-sm">
   <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Добавить трубу (УЗК)</label>
@@ -83,8 +94,8 @@
 
 <script>
 // ===== НАСТРОЙКИ =====
-const https://fzxtbjjrievfftxvhqka.supabase.co = 'https://YOUR-PROJECT.supabase.co';
-const sb_publishable_IO565V7if7QXWty8E37PnQ_wyfllwBA = 'sb_publishable_YOUR_KEY';   // Publishable key (или legacy anon)
+const SUPABASE_URL = (window.APP_CONFIG || {}).url || '';
+const SUPABASE_ANON_KEY = (window.APP_CONFIG || {}).key || '';
 const SHIFT_START_HOUR = 7;          // день 07–19, ночь 19–07 (как в SQL)
 const TZ = 'Europe/Kyiv';
 
@@ -295,7 +306,7 @@ function init() {
   setRole(role);
   setShift(view);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  if (SUPABASE_URL.includes('YOUR-PROJECT')) { setStatus('Нет ключей', 'bg-red-600'); return; }
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(SUPABASE_URL) || SUPABASE_ANON_KEY.length < 20) { setStatus('Нет ключей', 'bg-red-600'); return; }
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   fetchPipes();
   subscribe();
@@ -307,7 +318,7 @@ function init() {
   });
   window.addEventListener('online', fetchPipes);
 }
-init();
+try { init(); } catch (e) { setStatus('ОШИБКА', 'bg-red-600'); $('err-box').style.display = 'block'; $('err-box').textContent = e.message; }
 </script>
 </body>
 </html>
