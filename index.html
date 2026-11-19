@@ -21,126 +21,167 @@
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <style>
   body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; padding-bottom: 72px; }
-  input, textarea { -webkit-user-select: text; user-select: text; }
+  input, textarea, select { -webkit-user-select: text; user-select: text; }
 </style>
 </head>
 <body class="bg-gray-100 font-sans min-h-screen">
-
-<header class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md flex justify-between items-center">
-  <h1 class="font-bold text-base truncate"><span id="hdr">Цех МПД / УЗК</span></h1>
-  <span id="sync-status" class="text-xs px-2 py-1 bg-yellow-600 rounded shrink-0">Подключение...</span>
+<header class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md flex justify-between items-center gap-2">
+  <h1 class="font-bold text-base truncate" id="hdr">Цех МПД / УЗК</h1>
+  <div class="flex items-center gap-2 shrink-0">
+    <button id="online" data-act="online" class="hidden text-xs px-2 py-1 bg-slate-600 rounded">👥 0</button>
+    <span id="sync-status" class="text-xs px-2 py-1 bg-yellow-600 rounded">Подключение...</span>
+  </div>
 </header>
 <div id="err-box" style="display:none" class="m-3 p-3 bg-red-100 text-red-800 text-sm rounded break-all"></div>
-
-<section id="start" class="hidden p-3 max-w-md mx-auto space-y-4">
-  <div class="bg-white rounded-xl p-4 shadow-sm space-y-2">
-    <h2 class="font-bold text-slate-700">Создать смену (УЗК)</h2>
-    <input id="c-name" placeholder="Название (необязательно)" class="w-full border-2 p-3 rounded-lg">
-    <input id="c-pass" placeholder="Придумайте пароль смены" class="w-full border-2 p-3 rounded-lg">
-    <button data-act="create" class="w-full py-3 bg-blue-600 text-white font-bold rounded-lg">Создать</button>
-  </div>
-  <div class="bg-white rounded-xl p-4 shadow-sm space-y-2">
-    <h2 class="font-bold text-slate-700">Войти в смену</h2>
-    <input id="j-pass" placeholder="Пароль смены" class="w-full border-2 p-3 rounded-lg">
-    <div id="j-roles" class="grid grid-cols-3 gap-1 text-center font-semibold"></div>
-    <button data-act="join" class="w-full py-3 bg-emerald-600 text-white font-bold rounded-lg">Войти</button>
-  </div>
-</section>
-
+<section id="start" class="hidden p-3 max-w-md mx-auto space-y-3"></section>
 <main id="app" class="hidden p-2 max-w-md mx-auto">
-  <div id="v-list" class="space-y-2"></div>
-  <div id="v-stat" class="hidden space-y-3"></div>
-  <div id="v-sort" class="hidden space-y-3"></div>
-  <div id="v-set" class="hidden space-y-3"></div>
+  <div id="v-list" class="space-y-2"></div><div id="v-otk" class="hidden space-y-3"></div><div id="v-sort" class="hidden space-y-3"></div>
+  <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div>
 </main>
-<nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white grid text-center text-xs" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
-
+<nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white flex overflow-x-auto text-[11px] text-center" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
 <div id="modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3"></div>
 <div id="toast" class="hidden fixed bottom-20 inset-x-4 z-50 bg-slate-900 text-white text-sm p-3 rounded-lg text-center"></div>
 
 <script>
-// В, Н, П — кириллица (коды заданы явно); N — латиница
+// ===== Константы (В, Н, П — кириллица; N — латиница) =====
 const V = '\u0412', H = '\u041d', P = '\u041f', L = [V, H, P];
 const CY = ['-', 'N', H, V, 'ЗАК'];
 const MC = { '-': 'bg-gray-200 text-gray-600', N: 'bg-emerald-600 text-white', [H]: 'bg-red-600 text-white', [V]: 'bg-orange-600 text-white', 'ЗАК': 'bg-purple-700 text-white' };
 const CATS = [V, H, P, V + H, V + P, H + P, V + H + P];
-const ROLES = { uzk: 'УЗК', mpd1: 'МПД 1', mpd2: 'МПД 2' };
+const ROLES = { uzk: 'УЗК', mpd: 'МПД', otk: 'ОТК' };
+const AVS = ['😀', '😎', '🤠', '👷', '🦊', '🐻', '🐯', '🦁', '🐸', '🐼', '🦉', '🚀', '⚙️', '🔧', '⭐', '🔥'];
+const EMO = ['👍', '👌', '😂', '🙏', '⚠️', '✅', '❌', '🔧', '☕', '😀'];
+// Бригады: день D(d) идёт по кругу Б,А,В,Г с 17.11.2026; ночь d→d+1 работает та же бригада, что была днём d-1
+const BR = ['Б', 'А', 'В', 'Г'], ANCH = '2026-11-17';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
-const setStatus = (t, c) => { const b = $('sync-status'); b.textContent = t; b.className = 'text-xs px-2 py-1 rounded shrink-0 ' + c; };
+const setStatus = (t, c) => { const b = $('sync-status'); b.textContent = t; b.className = 'text-xs px-2 py-1 rounded ' + c; };
 const hhmm = iso => iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
 let tt; const toast = m => { const t = $('toast'); t.textContent = m; t.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(() => t.classList.add('hidden'), 3500); };
 const showErr = m => { const b = $('err-box'); b.style.display = m ? 'block' : 'none'; b.textContent = m || ''; };
 
-let db, pipes = [], sorts = [], tab = 'list';
-let S = JSON.parse(localStorage.getItem('ses') || 'null') || { sh: null, role: 'uzk', pass: '' };
-let cols = Object.assign({ uzk: 1, minus: 1, mpd1: 1, mpd2: 1, curve: 0 }, JSON.parse(localStorage.getItem('cols') || '{}'));
-const saveS = () => localStorage.setItem('ses', JSON.stringify(S));
-const can = c => S.role === 'uzk' || S.role === c;
+// ===== Время смен (по Киеву) =====
+const kNow = () => Date.parse(new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Kyiv' }).replace(' ', 'T') + 'Z');
+const dms = d => Date.parse(d + 'T00:00:00Z');
+const addDays = (d, n) => new Date(dms(d) + n * 864e5).toISOString().slice(0, 10);
+const endOf = (d, t) => dms(d) + (t === 'D' ? 19 : 31) * 36e5;
+const live = (d, t) => kNow() < endOf(d, t) + 36e5;          // до 08:00 / 20:00 смена ещё «живая», потом — архив
+const curKey = () => { const n = kNow(), h = new Date(n).getUTCHours(); return { date: new Date(n - 7 * 36e5).toISOString().slice(0, 10), type: h >= 7 && h < 19 ? 'D' : 'N' }; };
+const letter = (d, t) => BR[((((dms(d) - dms(ANCH)) / 864e5 - (t === 'N' ? 1 : 0)) % 4) + 4) % 4];
+const fd = d => d.split('-').reverse().join('.');
+const fdn = d => { const e = addDays(d, 1); return d.slice(8) + '–' + e.slice(8) + '.' + e.slice(5, 7) + '.' + e.slice(0, 4); };
+const sDate = s => s.shift_type === 'D' ? fd(s.shift_date) : fdn(s.shift_date);
+const sTitle = s => (s.shift_type === 'D' ? '☀️ День' : '🌙 Ночь') + ' · ' + sDate(s) + ' · смена ' + letter(s.shift_date, s.shift_type);
+
+// ===== Состояние =====
+let db, ch, pipes = [], sorts = [], msgs = [], cur = null, view = null, grace = null, tab = 'list', unread = 0, tick = null;
+let ses = JSON.parse(localStorage.getItem('ses3') || '{}');
+let cols = Object.assign({ uzk: 1, minus: 1, mpd: 1, curve: 0 }, JSON.parse(localStorage.getItem('cols') || '{}'));
+let st = { step: 'ws', users: [], pick: null, av: AVS[0], nm: '', role: 'uzk' };
+let arch = { from: addDays(curKey().date, -14), to: curKey().date, pl: '', letter: '', type: '', sort: 'date', rows: null, det: null, q: '' };
+const saveS = () => localStorage.setItem('ses3', JSON.stringify(ses));
+const role = () => ses.role;
+const can = c => role() === 'uzk' || (role() === 'mpd' && c === 'mpd');
 
 const modal = h => { $('modal').innerHTML = '<div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-2 max-h-[90vh] overflow-y-auto">' + h + '</div>'; $('modal').classList.remove('hidden'); };
 const closeM = () => $('modal').classList.add('hidden');
 const mb = (act, txt, cls, extra) => `<button data-act="${act}" ${extra || ''} class="w-full py-3 font-bold text-lg rounded-xl ${cls}">${txt}</button>`;
+const card = (t, h) => `<div class="bg-white rounded-xl p-4 shadow-sm space-y-2"><h2 class="font-bold text-slate-700">${t}</h2>${h}</div>`;
+const inp = (id, ph, ex) => `<input id="${id}" placeholder="${ph}" ${ex || ''} class="w-full border-2 p-3 rounded-lg">`;
 
-// ===== Старт / вход =====
-function showStart() {
-  $('start').classList.remove('hidden'); $('app').classList.add('hidden'); $('nav').classList.add('hidden'); $('hdr').textContent = 'Цех МПД / УЗК';
-  $('j-roles').innerHTML = Object.keys(ROLES).map(r => `<button data-act="role" data-r="${r}" class="py-2 rounded ${r === S.role ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">${ROLES[r]}</button>`).join('');
+// ===== Вход: пароль цеха → пользователь → роль =====
+async function loadUsers() { const { data } = await db.from('users').select('id,name,avatar,has_pin').order('name'); st.users = data || []; }
+function startUI(step) {
+  st.step = step; $('app').classList.add('hidden'); $('nav').classList.add('hidden'); $('online').classList.add('hidden'); $('start').classList.remove('hidden'); $('hdr').textContent = 'Цех МПД / УЗК';
+  let h = '';
+  if (step === 'ws') h = card('Пароль цеха', inp('w-pass', 'Пароль (если вы первый — он задастся)', 'type="password"') + mb('ws', 'Продолжить', 'bg-blue-600 text-white'));
+  if (step === 'users') h = card('Кто вы?', st.users.map(u => `<button data-act="pick" data-id="${u.id}" class="w-full py-3 px-3 text-left bg-gray-100 rounded-lg font-semibold">${esc(u.avatar)} ${esc(u.name)} ${u.has_pin ? '🔒' : ''}</button>`).join('') + mb('newuser', '➕ Новый пользователь', 'bg-blue-600 text-white'));
+  if (step === 'new') h = card('Новый пользователь', inp('n-name', 'Имя / ник', `value="${esc(st.nm)}" maxlength="30"`) +
+    '<div class="grid grid-cols-8 gap-1">' + AVS.map(a => `<button data-act="av" data-a="${a}" class="text-2xl py-1 rounded ${a === st.av ? 'bg-blue-200' : ''}">${a}</button>`).join('') + '</div>' +
+    mb('create', 'Создать', 'bg-blue-600 text-white') + mb('users', 'Назад', 'text-gray-500'));
+  if (step === 'role') h = card(esc(st.pick.avatar) + ' ' + esc(st.pick.name), (st.pick.has_pin ? inp('l-pin', 'Пароль учётки', 'type="password"') : '') +
+    '<div class="grid grid-cols-3 gap-1 text-center font-semibold">' + Object.keys(ROLES).map(r => `<button data-act="role" data-r="${r}" class="py-3 rounded ${r === st.role ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">${ROLES[r]}</button>`).join('') + '</div>' +
+    mb('login', 'Войти', 'bg-emerald-600 text-white') + mb('users', 'Назад', 'text-gray-500'));
+  $('start').innerHTML = h;
 }
-async function createShift() {
-  const pass = $('c-pass').value.trim(); if (pass.length < 3) return toast('Пароль — минимум 3 символа');
-  const name = $('c-name').value.trim() || 'Смена ' + new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const { data, error } = await db.rpc('create_shift', { p_name: name, p_pass: pass });
-  if (error) return toast(/pass_taken/.test(error.message) ? 'Такой пароль уже занят активной сменой' : error.message);
-  S = { sh: { id: data, name }, role: 'uzk', pass }; saveS(); tab = 'sort'; enter();
+async function toUsers() { await loadUsers(); startUI(st.users.length ? 'users' : 'new'); }
+async function doLogin() {
+  if (st.pick.has_pin) {
+    const { data, error } = await db.rpc('login_user', { p_id: st.pick.id, p_pin: $('l-pin').value });
+    if (error) return toast(error.message); if (!data) return toast('Неверный пароль учётки');
+  }
+  ses = { ws: true, uid: st.pick.id, name: st.pick.name, avatar: st.pick.avatar, role: st.role, pin: st.pick.has_pin }; saveS(); enter();
 }
-async function joinShift() {
-  const pass = $('j-pass').value.trim(); if (!pass) return;
-  const { data, error } = await db.rpc('join_shift', { p_pass: pass });
-  if (error) return toast(error.message);
-  if (!data || !data.length) return toast('Смена с таким паролем не найдена');
-  S = { sh: data[0], role: S.role, pass: '' }; saveS(); tab = 'list'; enter();
-}
-function leave() { S.sh = null; saveS(); pipes = []; sorts = []; closeM(); showStart(); }
+function logout() { ses = { ws: true }; saveS(); stopRT(); closeM(); toUsers(); }
+
+// ===== Вход в приложение =====
 async function enter() {
-  $('start').classList.add('hidden'); $('app').classList.remove('hidden'); $('nav').classList.remove('hidden');
-  $('hdr').textContent = S.sh.name + ' · ' + ROLES[S.role];
-  $('nav').style.gridTemplateColumns = `repeat(${S.role === 'uzk' ? 4 : 3},1fr)`;
-  await fetchAll(); setTab(tab);
+  $('start').classList.add('hidden'); $('app').classList.remove('hidden'); $('nav').classList.remove('hidden'); $('online').classList.remove('hidden');
+  $('hdr').textContent = `${ses.avatar} ${ses.name} · ${ROLES[ses.role]}`;
+  tab = ses.role === 'otk' ? 'otk' : 'list'; unread = 0; startRT(); await loadShift(); loadMsgs(); setTab(tab);
+  clearInterval(tick); tick = setInterval(rollover, 30000);
+}
+async function loadShift() {
+  const { data, error } = await db.rpc('current_shift');
+  if (error) { setStatus('Ошибка', 'bg-red-600'); return showErr(error.message); }
+  cur = Array.isArray(data) ? data[0] : data;
+  const { data: rs } = await db.from('shifts').select('*').order('shift_date', { ascending: false }).order('shift_type', { ascending: false }).limit(3);
+  grace = (rs || []).find(s => s.id !== cur.id && live(s.shift_date, s.shift_type)) || null;
+  if (!view || (view.id !== cur.id && !(grace && view.id === grace.id))) view = cur;
+  await fetchAll();
+}
+function rollover() {
+  if (!cur) return; const k = curKey();
+  if (cur.shift_date !== k.date || cur.shift_type !== k.type) { view = null; loadShift().then(() => { render(); toast('Новая смена: ' + sTitle(cur)); }); }
+  else if (view && view.id !== cur.id && !live(view.shift_date, view.shift_type)) { view = cur; fetchAll(); }
 }
 
-// ===== Данные =====
+// ===== Данные и реальное время =====
 async function fetchAll() {
-  const id = S.sh.id;
+  const id = view.id;
   const [a, b] = await Promise.all([
     db.from('sortaments').select('*').eq('shift_id', id).order('created_at'),
-    db.from('pipes').select('*').eq('shift_id', id).order('seq').order('created_at')
-  ]);
+    db.from('pipes').select('*').eq('shift_id', id).order('seq').order('created_at')]);
   const er = a.error || b.error;
   if (er) { setStatus('Ошибка загрузки', 'bg-red-600'); return showErr((er.code || '') + ' ' + er.message); }
   showErr(''); sorts = a.data; pipes = b.data; render();
 }
-function subscribe() {
+async function loadMsgs() {
+  const { data } = await db.from('messages').select('*').order('created_at', { ascending: false }).limit(100);
+  msgs = (data || []).reverse(); if (tab === 'chat') rChat();
+}
+function startRT() {
+  stopRT();
   const up = (arr, row) => { const i = arr.findIndex(x => x.id === row.id); i >= 0 ? arr[i] = row : arr.push(row); };
-  db.channel('mpd_ch')
+  ch = db.channel('mpd_ch', { config: { presence: { key: ses.uid } } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pipes' }, p => {
-      if (!S.sh) return;
+      if (!view) return;
       if (p.eventType === 'DELETE') pipes = pipes.filter(x => x.id !== p.old.id);
-      else if (p.new.shift_id === S.sh.id) { up(pipes, p.new); pipes.sort((a, b) => a.seq - b.seq || a.created_at.localeCompare(b.created_at)); }
+      else if (p.new.shift_id === view.id) { up(pipes, p.new); pipes.sort((a, b) => a.seq - b.seq || a.created_at.localeCompare(b.created_at)); }
       render();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sortaments' }, p => {
-      if (!S.sh) return;
+      if (!view) return;
       if (p.eventType === 'DELETE') { sorts = sorts.filter(x => x.id !== p.old.id); pipes = pipes.filter(x => x.sort_id !== p.old.id); }
-      else if (p.new.shift_id === S.sh.id) up(sorts, p.new);
+      else if (p.new.shift_id === view.id) up(sorts, p.new);
       render();
     })
-    .subscribe(st => {
-      if (st === 'SUBSCRIBED') { setStatus('Онлайн', 'bg-emerald-600'); if (S.sh) fetchAll(); }
-      else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(st)) setStatus('Нет связи', 'bg-red-600');
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, p => {
+      if (msgs.some(m => m.id === p.new.id)) return; msgs.push(p.new);
+      if (tab === 'chat') rChat(); else if (p.new.user_id !== ses.uid) { unread++; navUpd(); buzz(30); }
+    })
+    .on('presence', { event: 'sync' }, () => { const n = Object.keys(ch.presenceState()).length; $('online').textContent = '👥 ' + n; })
+    .subscribe(async s => {
+      if (s === 'SUBSCRIBED') { setStatus('Онлайн', 'bg-emerald-600'); await ch.track({ uid: ses.uid, name: ses.name, avatar: ses.avatar, role: ses.role }); if (view) fetchAll(); }
+      else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(s)) setStatus('Нет связи', 'bg-red-600');
     });
+}
+function stopRT() { if (ch) { db.removeChannel(ch); ch = null; } clearInterval(tick); }
+function onlineModal() {
+  const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(Boolean);
+  modal('<h3 class="font-bold text-center text-lg">Сейчас онлайн: ' + ps.length + '</h3>' + ps.map(u => `<div class="py-2 border-b">${esc(u.avatar)} <b>${esc(u.name)}</b> · ${ROLES[u.role] || ''}</div>`).join('') + mb('close', 'Закрыть', 'bg-slate-800 text-white'));
 }
 async function patch(id, obj, local) {
   const p = pipes.find(x => x.id === id); if (!p) return;
@@ -149,184 +190,283 @@ async function patch(id, obj, local) {
   const { error } = await db.from('pipes').update(obj).eq('id', id);
   if (error) { Object.assign(p, old); render(); toast('Не сохранилось: ' + error.message); buzz([100, 50, 100]); }
 }
-const setMpd = (id, c, v) => patch(id, { [c + '_val']: v }, { [c + '_at']: v === '-' ? null : new Date().toISOString() });
+const setMpd = (id, v) => patch(id, { mpd_val: v, mpd_by: ses.name }, { mpd_at: v === '-' ? null : new Date().toISOString() });
+const setUzk = (id, o) => patch(id, Object.assign({ uzk_by: ses.name }, o), { uzk_at: new Date().toISOString() });
 const sortOf = id => sorts.find(s => s.id === id);
 
 // ===== Вкладки =====
-function setTab(t) {
-  tab = t;
-  ['list', 'stat', 'sort', 'set'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
-  const items = [['list', '📋', 'Список'], ['stat', '📊', 'Отчёт']].concat(S.role === 'uzk' ? [['sort', '➕', 'Сортамент']] : []).concat([['set', '⚙️', 'Опции']]);
-  $('nav').innerHTML = items.map(([k, i, n]) => `<button data-tab="${k}" class="py-2 ${k === t ? 'bg-blue-600 font-bold' : ''}"><div class="text-lg">${i}</div>${n}</button>`).join('');
-  render();
+function tabsDef() {
+  const r = role();
+  return [['list', '📋', 'Список'], ['otk', '🔍', 'ОТК']].concat(r === 'uzk' ? [['sort', '➕', 'Сортамент']] : [])
+    .concat(r !== 'mpd' ? [['stat', '📊', 'Отчёт'], ['arch', '🗄', 'Архив']] : []).concat([['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']]);
 }
-function render() { if (S.sh) ({ list: rList, stat: rStat, sort: rSort, set: rSet })[tab](); }
+function navUpd() {
+  $('nav').innerHTML = tabsDef().map(([k, i, n]) => `<button data-tab="${k}" class="py-2 flex-1 min-w-[58px] relative ${k === tab ? 'bg-blue-600 font-bold' : ''}"><div class="text-lg leading-none">${i}</div>${n}${k === 'chat' && unread ? `<span class="absolute top-0 right-2 bg-red-600 rounded-full px-1 text-[10px]">${unread}</span>` : ''}</button>`).join('');
+}
+function setTab(t) {
+  tab = t; if (t === 'chat') unread = 0;
+  ['list', 'otk', 'sort', 'stat', 'arch', 'chat', 'set'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
+  navUpd(); render(true);
+}
+function render(force) {
+  if (!view) return;
+  if ((tab === 'arch' || tab === 'chat') && !force) return;
+  ({ list: rList, otk: rOtk, sort: rSort, stat: rStat, arch: rArch, chat: rChat, set: rSet })[tab]();
+}
+function shiftBar() {
+  const b = (s, l) => `<button data-act="vs" data-id="${s.id}" class="flex-1 py-2 rounded text-sm ${view.id === s.id ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${l}</button>`;
+  return `<div class="text-xs font-semibold text-slate-600 px-1">${sTitle(view)}</div>` + (grace ? `<div class="flex gap-1">${b(cur, 'Текущая')}${b(grace, 'Прошлая (доработка)')}</div>` : '');
+}
 
 // ===== Список =====
 function cell(p, c, label, val, cls) {
-  return `<button data-id="${p.id}" data-c="${c}" class="flex-1 h-14 rounded-lg flex flex-col items-center justify-center ${cls} active:scale-95"><span class="text-[10px] opacity-80 font-normal leading-tight">${label}</span><span class="font-black text-lg leading-tight">${esc(val)}</span></button>`;
+  return `<button data-id="${p.id}" data-c="${c}" class="flex-1 h-14 rounded-lg flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[10px] opacity-80 font-normal leading-tight">${label}</span><span class="font-black text-lg leading-tight">${esc(val)}</span></button>`;
 }
 function rList() {
-  let last = null, h = '';
-  if (!pipes.length) h = '<p class="text-center text-gray-400 py-8">Список пуст' + (S.role === 'uzk' ? '. Добавьте сортамент во вкладке «Сортамент».' : '.') + '</p>';
+  let last = null, h = shiftBar();
+  if (!pipes.length) h += '<p class="text-center text-gray-400 py-8">Список пуст' + (role() === 'uzk' ? '. Добавьте трубы во вкладке «Сортамент».' : '.') + '</p>';
   pipes.forEach(p => {
     if (p.sort_id !== last) {
       last = p.sort_id; const s = sortOf(p.sort_id);
       if (s) h += `<div class="text-xs text-slate-500 font-semibold px-1 pt-2">${esc(s.diameter)} x ${esc(s.wall)} ${esc(s.grade)}${s.plavka ? ' · пл. ' + esc(s.plavka) : ''}${s.party ? ' · парт. ' + esc(s.party) : ''}</div>`;
     }
-    const dim = c => can(c) ? '' : ' opacity-60';
     let b = '';
-    if (cols.uzk) b += cell(p, 'uzk', 'УЗК', p.uzk_def, (p.uzk_def === 'N' ? MC.N : 'bg-red-600 text-white') + dim('uzk'));
-    if (cols.minus) b += cell(p, 'minus', 'Минус', p.uzk_minus == null ? 'N' : p.uzk_minus, (p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white') + dim('uzk'));
-    if (cols.mpd1) b += cell(p, 'mpd1', 'МПД-1' + (p.mpd1_at ? ' ' + hhmm(p.mpd1_at) : ''), p.mpd1_val, MC[p.mpd1_val] + dim('mpd1'));
-    if (cols.mpd2) b += cell(p, 'mpd2', 'МПД-2' + (p.mpd2_at ? ' ' + hhmm(p.mpd2_at) : ''), p.mpd2_val, MC[p.mpd2_val] + dim('mpd2'));
-    if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', (p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600') + dim('uzk'));
-    h += `<div class="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-      <div class="flex items-center gap-2 mb-1"><span class="w-9 text-right font-bold text-slate-400">${p.seq}</span>
-      <span data-edit="${p.id}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all">${esc(p.pipe_number)}</span></div>
-      <div class="flex gap-1">${b}</div></div>`;
+    if (cols.uzk) b += cell(p, 'uzk', 'УЗК', p.uzk_def, p.uzk_def === 'N' ? MC.N : 'bg-red-600 text-white');
+    if (cols.minus) b += cell(p, 'minus', 'Минус', p.uzk_minus == null ? 'N' : p.uzk_minus, p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white');
+    if (cols.mpd) b += cell(p, 'mpd', 'МПД' + (p.mpd_at ? ' ' + hhmm(p.mpd_at) : ''), p.mpd_val, MC[p.mpd_val]);
+    if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600');
+    h += `<div class="bg-white p-2 rounded-xl shadow-sm border border-gray-200"><div class="flex items-center gap-2 mb-1"><span class="w-9 text-right font-bold text-slate-400">${p.seq}</span>
+      <span data-edit="${p.id}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all">${esc(p.pipe_number)}</span></div><div class="flex gap-1">${b}</div></div>`;
   });
   $('v-list').innerHTML = h;
 }
-
-// Тап = смена значения, долгое нажатие = выбор из списка
-let pt = null, lf = false;
-const lst = $('v-list');
-lst.addEventListener('pointerdown', e => {
-  const b = e.target.closest('button[data-id]'); if (!b) return; lf = false;
-  pt = setTimeout(() => { lf = true; buzz(40); mpdModal(b.dataset.id, b.dataset.c); }, 500);
-});
+let pt = null, lf = false; const lst = $('v-list');
+lst.addEventListener('pointerdown', e => { const b = e.target.closest('button[data-id]'); if (!b) return; lf = false; pt = setTimeout(() => { lf = true; buzz(40); mpdModal(b.dataset.id, b.dataset.c); }, 500); });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => lst.addEventListener(ev, () => clearTimeout(pt)));
 lst.addEventListener('click', e => {
-  const n = e.target.closest('[data-edit]'); if (n) { if (S.role === 'uzk') editModal(n.dataset.edit); return; }
+  const n = e.target.closest('[data-edit]'); if (n) { if (role() === 'uzk') editModal(n.dataset.edit); return; }
   const b = e.target.closest('button[data-id]'); if (!b || lf) return;
-  const { id, c } = b.dataset, p = pipes.find(x => x.id === id); if (!p) return;
-  buzz(20);
-  if (c === 'mpd1' || c === 'mpd2') { if (!can(c)) return; const i = CY.indexOf(p[c + '_val']); setMpd(id, c, i >= 4 ? 'N' : CY[i + 1]); }
-  else if (S.role !== 'uzk') return;
-  else if (c === 'uzk') uzkModal(id);
-  else if (c === 'minus') minusModal(id);
-  else if (c === 'curve') patch(id, { curved: !p.curved });
+  const { id, c } = b.dataset, p = pipes.find(x => x.id === id); if (!p || !can(c)) return; buzz(20);
+  if (c === 'mpd') { const i = CY.indexOf(p.mpd_val); setMpd(id, i >= 4 ? 'N' : CY[i + 1]); }
+  else if (c === 'uzk') uzkModal(id); else if (c === 'minus') minusModal(id); else if (c === 'curve') patch(id, { curved: !p.curved });
 });
-
 function mpdModal(id, c) {
-  if ((c !== 'mpd1' && c !== 'mpd2') || !can(c)) return;
+  if (c !== 'mpd' || !can(c)) return;
   const nm = { N: 'N — Годная', [H]: H + ' — Наружный', [V]: V + ' — Внутренний', 'ЗАК': 'ЗАК — Закалочная', '-': 'Сбросить (-)' };
-  modal('<h3 class="font-bold text-center text-lg">Результат ' + ROLES[c] + '</h3>' + CY.map(v => mb('mpdset', nm[v], MC[v], `data-id="${id}" data-c="${c}" data-v="${v}"`)).join('') + mb('close', 'Отмена', 'text-gray-500'));
+  modal('<h3 class="font-bold text-center text-lg">Результат МПД</h3>' + CY.map(v => mb('mpdset', nm[v], MC[v], `data-id="${id}" data-v="${v}"`)).join('') + mb('close', 'Отмена', 'text-gray-500'));
 }
 function uzkModal(id) {
-  const p = pipes.find(x => x.id === id); if (!p) return;
-  const cur = p.uzk_def === 'N' ? '' : p.uzk_def;
+  const p = pipes.find(x => x.id === id); if (!p) return; const cur = p.uzk_def === 'N' ? '' : p.uzk_def;
   modal('<h3 class="font-bold text-center text-lg">Отсорт УЗК · №' + p.seq + '</h3><div class="grid grid-cols-3 gap-2">' +
     L.map(l => mb('uzkt', l, cur.includes(l) ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700', `data-id="${id}" data-l="${l}"`)).join('') + '</div>' +
     mb('uzkset', 'N — годная', MC.N, `data-id="${id}"`) + mb('close', 'Готово', 'bg-slate-800 text-white'));
 }
 function minusModal(id) {
   const p = pipes.find(x => x.id === id); if (!p) return;
-  modal('<h3 class="font-bold text-center text-lg">Минус · фактическая стенка</h3>' +
-    `<input id="m-val" type="number" step="0.01" inputmode="decimal" value="${p.uzk_minus == null ? '' : p.uzk_minus}" class="w-full border-2 p-3 rounded-lg text-2xl font-bold text-center">` +
+  modal('<h3 class="font-bold text-center text-lg">Минус · фактическая стенка</h3>' + `<input id="m-val" type="number" step="0.01" inputmode="decimal" value="${p.uzk_minus == null ? '' : p.uzk_minus}" class="w-full border-2 p-3 rounded-lg text-2xl font-bold text-center">` +
     mb('minsave', 'Сохранить', 'bg-amber-500 text-white', `data-id="${id}"`) + mb('minreset', 'N (сброс)', MC.N, `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
 }
 function editModal(id) {
   const p = pipes.find(x => x.id === id); if (!p) return;
-  modal('<h3 class="font-bold text-center text-lg">Труба №' + p.seq + '</h3>' +
-    `<input id="e-num" value="${esc(p.pipe_number)}" class="w-full border-2 p-3 rounded-lg text-xl font-bold uppercase">` +
+  modal('<h3 class="font-bold text-center text-lg">Труба №' + p.seq + '</h3>' + `<input id="e-num" value="${esc(p.pipe_number)}" class="w-full border-2 p-3 rounded-lg text-xl font-bold uppercase">` +
     mb('esave', 'Сохранить номер', 'bg-blue-600 text-white', `data-id="${id}"`) + mb('edel', 'Удалить трубу', 'bg-red-600 text-white', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
 }
 
+// ===== ОТК: только просмотр отсортов =====
+function rOtk() {
+  const ra = pipes.filter(p => p.uzk_def !== 'N'), sm = pipes.filter(p => p.uzk_minus != null), ob = pipes.filter(p => p.mpd_val === 'ЗАК');
+  const sec = (t, cls, arr, f) => `<div class="bg-white rounded-xl p-3 shadow-sm"><div class="flex justify-between items-center mb-2"><b>${t}</b><span class="text-2xl font-black ${cls}">${arr.length}</span></div>
+    <div class="flex flex-wrap gap-1">${arr.map(p => `<span class="px-2 py-1 rounded bg-gray-100 text-sm"><b>${esc(p.pipe_number)}</b> <span class="text-gray-500">${f(p)}</span></span>`).join('') || '<span class="text-gray-400 text-sm">нет</span>'}</div></div>`;
+  $('v-otk').innerHTML = shiftBar() + `<div class="text-xs text-gray-500 px-1">Подано: ${pipes.length}</div>` +
+    sec('Р/А — отсорт УЗК', 'text-red-600', ra, p => esc(p.uzk_def)) + sec('S- — минус (стенка)', 'text-amber-600', sm, p => esc(p.uzk_minus)) + sec('ОБР — закалочные', 'text-purple-700', ob, () => 'ЗАК');
+}
+
 // ===== Сортамент (УЗК) =====
+function expand(txt) {
+  const out = [];
+  txt.toUpperCase().replace(/\s*[-–—]\s*/g, '-').split(/[\s,;]+/).filter(Boolean).forEach(t => {
+    const m = t.match(/^(\D*)(\d+)-(\D*)(\d+)$/);
+    if (m && (m[3] === '' || m[3] === m[1])) { const a = +m[2], b = +m[4], w = m[2].length; if (b > a && b - a <= 500) { for (let i = a; i <= b; i++) out.push(m[1] + String(i).padStart(w, '0')); return; } }
+    out.push(t);
+  });
+  return [...new Set(out)];
+}
+const sLabel = s => `${s.diameter} x ${s.wall} ${s.grade || ''}${s.plavka ? ' · пл. ' + s.plavka : ''}`;
 function rSort() {
   const next = pipes.reduce((m, p) => Math.max(m, p.seq), 0) + 1;
-  let h = mb('sortform', '+ Добавить сортамент', 'bg-blue-600 text-white', `data-next="${next}"`);
+  let h = shiftBar() + mb('sortform', '+ Добавить трубы / сортамент', 'bg-blue-600 text-white', `data-next="${next}"`);
   sorts.forEach(s => {
     const ps = pipes.filter(p => p.sort_id === s.id);
-    h += `<div class="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2"><div class="text-sm"><div class="font-bold">${esc(s.diameter)} x ${esc(s.wall)} ${esc(s.grade)}</div>
-      <div class="text-gray-500">пл. ${esc(s.plavka || '—')} · парт. ${esc(s.party || '—')} · труб ${ps.length}${ps.length ? ' (№' + ps[0].seq + '–' + ps[ps.length - 1].seq + ')' : ''}</div></div>
+    h += `<div class="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2"><div class="text-sm"><div class="font-bold">${esc(sLabel(s))}</div>
+      <div class="text-gray-500">парт. ${esc(s.party || '—')} · труб ${ps.length}${ps.length ? ' (№' + ps[0].seq + '–' + ps[ps.length - 1].seq + ')' : ''}</div></div>
       <button data-act="sortdel" data-id="${s.id}" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm">Удалить</button></div>`;
   });
   $('v-sort').innerHTML = h;
 }
 function sortForm(next) {
-  const f = (id, ph, ex) => `<input id="${id}" placeholder="${ph}" ${ex || ''} class="w-full border-2 p-3 rounded-lg">`;
-  modal('<h3 class="font-bold text-center text-lg">Новый сортамент</h3>' + f('f-p', 'Плавка') + f('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"') + f('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"') +
-    f('f-g', 'Марка стали (N80Q)') + f('f-n', 'Номер партии') +
-    '<label class="block text-xs text-gray-600">Нумерация в списке начинается с №</label>' + f('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
-    '<textarea id="f-nums" rows="5" placeholder="Номера труб: через пробел, запятую или с новой строки" class="w-full border-2 p-3 rounded-lg uppercase"></textarea>' +
+  modal('<h3 class="font-bold text-center text-lg">Добавить трубы</h3>' +
+    `<select id="f-sel" class="w-full border-2 p-3 rounded-lg"><option value="">➕ Новый сортамент</option>${sorts.map(s => `<option value="${s.id}">${esc(sLabel(s))}</option>`).join('')}</select>` +
+    `<div id="f-new" class="space-y-2">${inp('f-p', 'Плавка')}${inp('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"')}${inp('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"')}${inp('f-g', 'Марка стали (N80Q)')}${inp('f-n', 'Номер партии')}</div>` +
+    '<label class="block text-xs text-gray-600">Нумерация в списке начинается с №</label>' + inp('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
+    '<textarea id="f-nums" rows="4" placeholder="Номера: через пробел, запятую, с новой строки или диапазоном 5525-5530" class="w-full border-2 p-3 rounded-lg uppercase"></textarea><p id="f-prev" class="text-xs text-gray-500"></p>' +
     mb('sortsave', 'Добавить', 'bg-blue-600 text-white') + mb('close', 'Отмена', 'text-gray-500'));
 }
+document.addEventListener('input', e => {
+  if (e.target.id === 'f-nums') { const a = expand(e.target.value); $('f-prev').textContent = a.length ? `Будет добавлено: ${a.length} (${a[0]}${a.length > 1 ? ' … ' + a[a.length - 1] : ''})` : ''; }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'f-sel') $('f-new').style.display = e.target.value ? 'none' : 'block';
+  const k = e.target.dataset.col; if (k) { cols[k] = e.target.checked ? 1 : 0; localStorage.setItem('cols', JSON.stringify(cols)); }
+});
 async function sortSave() {
-  const g = id => $(id).value.trim();
-  const nums = [...new Set(g('f-nums').toUpperCase().split(/[\s,;]+/).filter(Boolean))];
-  if (!g('f-d') || !g('f-w') || !nums.length) return toast('Нужны диаметр, стенка и номера труб');
+  const g = id => $(id).value.trim(), nums = expand(g('f-nums')), selId = g('f-sel');
+  if (!nums.length) return toast('Введите номера труб');
+  if (!selId && (!g('f-d') || !g('f-w'))) return toast('Нужны диаметр и стенка');
   const have = new Set(pipes.map(p => p.pipe_number)), fresh = nums.filter(n => !have.has(n));
   if (!fresh.length) return toast('Все номера уже есть в смене');
+  let sid = selId, created = null;
+  if (!sid) {
+    const { data, error } = await db.from('sortaments').insert({ shift_id: view.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n') }).select().single();
+    if (error) return toast(error.message); sid = created = data.id;
+  }
   const start = parseInt(g('f-s')) || 1;
-  const { data: so, error } = await db.from('sortaments').insert({ shift_id: S.sh.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n') }).select().single();
-  if (error) return toast(error.message);
-  const { error: e2 } = await db.from('pipes').insert(fresh.map((n, i) => ({ shift_id: S.sh.id, sort_id: so.id, seq: start + i, pipe_number: n })));
-  if (e2) { await db.from('sortaments').delete().eq('id', so.id); return toast(e2.message); }
+  const { error: e2 } = await db.from('pipes').insert(fresh.map((n, i) => ({ shift_id: view.id, sort_id: sid, seq: start + i, pipe_number: n, added_by: ses.name })));
+  if (e2) { if (created) await db.from('sortaments').delete().eq('id', created); return toast(e2.message); }
   closeM(); toast(`Добавлено труб: ${fresh.length}` + (nums.length - fresh.length ? `, дублей пропущено: ${nums.length - fresh.length}` : '')); await fetchAll(); setTab('list');
 }
 
 // ===== Отчёт =====
 function statOf(arr, s) {
   let bad = 0, both = 0, minus = 0, curved = 0; const cat = {};
-  arr.forEach(p => {
-    const l = p.uzk_def !== 'N', m = p.uzk_minus != null; if (p.curved) curved++;
-    if (l || m) bad++;
-    if (l && m) both++; else if (l) cat[p.uzk_def] = (cat[p.uzk_def] || 0) + 1; else if (m) minus++;
-  });
+  arr.forEach(p => { const l = p.uzk_def !== 'N', m = p.uzk_minus != null; if (p.curved) curved++; if (l || m) bad++; if (l && m) both++; else if (l) cat[p.uzk_def] = (cat[p.uzk_def] || 0) + 1; else if (m) minus++; });
   const n = arr.length, good = n - bad, parts = CATS.filter(k => cat[k]).map(k => k + ' ' + cat[k]); parts.push('S- ' + minus);
-  return [s ? `${s.diameter} x ${s.wall} ${s.grade || ''}`.trim() : 'Итого за смену',
-    `Подано - ${n}`, `Отсортов - ${bad}`, `Годных - ${good} (${n ? Math.round(good / n * 100) : 0}%)`, parts.join(', '), `Совместных - ${both};`]
+  return [`${s.diameter} x ${s.wall} ${s.grade || ''}`.trim(), `Подано - ${n}`, `Отсортов - ${bad}`, `Годных - ${good} (${n ? Math.round(good / n * 100) : 0}%)`, parts.join(', '), `Совместных - ${both};`]
     .concat(cols.curve ? [`Кривых - ${curved};`] : []).join('\n');
 }
-const reportText = () => 'КНК за смену:\n' + sorts.map(s => statOf(pipes.filter(p => p.sort_id === s.id), s)).concat(sorts.length > 1 ? [statOf(pipes)] : []).join('\n\n');
-function rStat() {
-  $('v-stat').innerHTML = pipes.length
-    ? `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-base" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться', 'bg-blue-600 text-white') + mb('copy', 'Копировать', 'bg-gray-300 text-gray-800')
-    : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>';
+function reportOf(sh, arr, info) {
+  const g = new Map(); arr.forEach(p => { if (!g.has(p.sort_id)) g.set(p.sort_id, [info(p), []]); g.get(p.sort_id)[1].push(p); });
+  const blocks = [...g.values()].map(([s, a]) => statOf(a, s || { diameter: '?', wall: '?' }));
+  if (g.size > 1) blocks.push(statOf(arr, { diameter: 'Итого', wall: '', grade: '' }).replace(/^Итого x\s*/, 'Итого за смену\n'));
+  return `КНК за смену ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} ${sh.shift_type === 'D' ? '(день)' : '(ночь)'}:\n` + blocks.join('\n\n');
 }
-async function share(copyOnly) {
-  const t = reportText();
+const reportText = () => reportOf(view, pipes, p => sortOf(p.sort_id));
+function rStat() {
+  $('v-stat').innerHTML = shiftBar() + (pipes.length ? `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-base" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться', 'bg-blue-600 text-white') + mb('copy', 'Копировать', 'bg-gray-300 text-gray-800') : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>');
+}
+async function share(t, copyOnly) {
   if (!copyOnly && navigator.share) { try { await navigator.share({ text: t }); return; } catch (e) { if (e.name === 'AbortError') return; } }
   try { await navigator.clipboard.writeText(t); toast('Скопировано'); } catch (e) { toast('Не удалось скопировать'); }
+}
+
+// ===== Архив =====
+const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 : 0;
+function readArch() { if ($('a-from')) { arch.from = $('a-from').value; arch.to = $('a-to').value; arch.pl = $('a-pl').value.trim(); if ($('a-sort')) arch.sort = $('a-sort').value; } }
+async function archLoad() {
+  readArch(); const { data, error } = await db.rpc('archive_stats', { p_from: arch.from, p_to: arch.to, p_plavka: arch.pl });
+  if (error) return toast(error.message); arch.rows = (data || []).filter(r => !live(r.shift_date, r.shift_type)); arch.det = null; rArch();
+}
+function rArch() {
+  const v = $('v-arch');
+  if (arch.det) return rArchDet(v);
+  const chip = (k, val, txt) => `<button data-act="af" data-k="${k}" data-v="${val}" class="px-3 py-1 rounded-full text-sm ${arch[k] === val ? 'bg-blue-600 text-white' : 'bg-gray-200'}">${txt}</button>`;
+  let h = `<div class="bg-white rounded-xl p-3 shadow-sm space-y-2"><div class="grid grid-cols-2 gap-2"><input id="a-from" type="date" value="${arch.from}" class="border-2 p-2 rounded-lg"><input id="a-to" type="date" value="${arch.to}" class="border-2 p-2 rounded-lg"></div>
+    <input id="a-pl" placeholder="Плавка (часть номера)" value="${esc(arch.pl)}" class="w-full border-2 p-2 rounded-lg">
+    <div class="flex flex-wrap gap-1 items-center"><span class="text-xs text-gray-500">Смена:</span>${chip('letter', '', 'Все')}${BR.slice().sort().map(l => chip('letter', l, l)).join('')}</div>
+    <div class="flex flex-wrap gap-1 items-center"><span class="text-xs text-gray-500">Время:</span>${chip('type', '', 'Все')}${chip('type', 'D', '☀️ День')}${chip('type', 'N', '🌙 Ночь')}</div>
+    <div class="flex gap-2"><select id="a-sort" class="flex-1 border-2 p-2 rounded-lg"><option value="date">Сортировка: по дате</option><option value="total">по количеству подано</option><option value="pct">по % брака</option></select></div>
+    ${mb('aload', 'Показать', 'bg-blue-600 text-white')}</div>`;
+  if (arch.rows) {
+    let rows = arch.rows.filter(r => (!arch.letter || letter(r.shift_date, r.shift_type) === arch.letter) && (!arch.type || r.shift_type === arch.type));
+    if (arch.sort === 'total') rows = rows.slice().sort((a, b) => b.total - a.total); else if (arch.sort === 'pct') rows = rows.slice().sort((a, b) => pct(b.bad, b.total) - pct(a.bad, a.total));
+    const g = {}; rows.forEach(r => { const l = letter(r.shift_date, r.shift_type), x = g[l] = g[l] || { n: 0, t: 0, b: 0, z: 0 }; x.n++; x.t += r.total; x.b += r.bad; x.z += r.zak; });
+    const ks = Object.keys(g).sort(), mt = Math.max(...ks.map(k => g[k].t), 0), mp = Math.max(...ks.map(k => pct(g[k].b, g[k].t)), 0);
+    h += ks.length ? `<div class="bg-white rounded-xl p-3 shadow-sm overflow-x-auto"><h3 class="font-bold mb-1">Сравнение смен (бригад)</h3><table class="w-full text-sm text-center"><tr class="text-gray-500 text-xs"><td>Смена</td><td>Смен</td><td>Подано</td><td>Брак</td><td>%</td><td>ЗАК</td></tr>` +
+      ks.map(k => { const x = g[k], p = pct(x.b, x.t); return `<tr class="border-t"><td class="font-black">${k}</td><td>${x.n}</td><td>${x.t}${x.t === mt && ks.length > 1 ? ' 🏆' : ''}</td><td>${x.b}</td><td>${p}${p === mp && mp > 0 && ks.length > 1 ? ' ⚠️' : ''}</td><td>${x.z}</td></tr>`; }).join('') + '</table><div class="text-xs text-gray-500 mt-1">🏆 больше всего подано · ⚠️ выше % брака (УЗК: отсорт + минус)</div></div>' : '';
+    h += rows.map(r => `<button data-act="aopen" data-id="${r.shift_id}" data-d="${r.shift_date}" data-t="${r.shift_type}" class="w-full text-left bg-white rounded-xl p-3 shadow-sm"><div class="font-bold">${sTitle(r)}</div><div class="text-sm text-gray-600">подано ${r.total} · брак ${r.bad} (${pct(r.bad, r.total)}%) · S- ${r.minus} · ЗАК ${r.zak}</div></button>`).join('') || '<p class="text-center text-gray-400 py-4">Нет смен по фильтру</p>';
+  } else h += '<p class="text-center text-gray-400 py-4">Задайте фильтры и нажмите «Показать»</p>';
+  v.innerHTML = h; if ($('a-sort')) $('a-sort').value = arch.sort;
+}
+async function archOpen(id, d, t) {
+  const [a, b] = await Promise.all([db.from('pipes').select('*, sortaments(plavka,diameter,wall,grade)').eq('shift_id', id).order('seq'), 0]);
+  if (a.error) return toast(a.error.message);
+  arch.det = { sh: { id, shift_date: d, shift_type: t }, rows: a.data }; arch.q = ''; rArch();
+}
+function rArchDet(v) {
+  const { sh, rows } = arch.det, q = arch.q.toUpperCase();
+  const f = rows.filter(p => !q || p.pipe_number.includes(q) || [p.uzk_by, p.added_by, p.mpd_by].some(x => x && x.toUpperCase().includes(q)));
+  v.innerHTML = `<div class="flex gap-2">${mb('aback', '‹ Назад', 'bg-gray-300 text-gray-800 !py-2 !text-base')}${mb('ashare', 'Отчёт', 'bg-blue-600 text-white !py-2 !text-base')}</div><div class="font-bold px-1">${sTitle(sh)}</div>
+    <input id="a-q" placeholder="Поиск: номер трубы или имя" value="${esc(arch.q)}" class="w-full border-2 p-2 rounded-lg">` +
+    f.map(p => { const s = p.sortaments || {}; return `<div class="bg-white rounded-lg p-2 shadow-sm text-sm"><div class="flex justify-between"><b>${p.seq}. ${esc(p.pipe_number)}</b><span class="text-gray-500">${esc(s.plavka ? 'пл. ' + s.plavka : '')} ${esc(s.diameter || '')}x${esc(s.wall || '')}</span></div>
+      <div>УЗК: <b>${esc(p.uzk_def)}</b>${p.uzk_minus != null ? ' · S- <b>' + esc(p.uzk_minus) + '</b>' : ''} <span class="text-gray-500">— ${esc(p.uzk_by || p.added_by || '—')} ${hhmm(p.uzk_at)}</span></div>
+      <div>МПД: <b>${esc(p.mpd_val)}</b> <span class="text-gray-500">— ${esc(p.mpd_by || '—')} ${hhmm(p.mpd_at)}</span></div></div>`; }).join('');
+}
+document.addEventListener('input', e => { if (e.target.id === 'a-q') { arch.q = e.target.value; const pos = e.target.selectionStart; rArchDet($('v-arch')); const n = $('a-q'); n.focus(); n.setSelectionRange(pos, pos); } });
+
+// ===== Чат =====
+function rChat() {
+  const v = $('v-chat');
+  if (!$('chat-in')) v.innerHTML = '<div id="chat-msgs" class="space-y-2 pb-2"></div><div class="sticky bottom-16 bg-gray-100 pt-1 space-y-1"><div class="flex gap-1 overflow-x-auto">' + EMO.map(e => `<button data-act="emo" data-e="${e}" class="text-2xl px-1">${e}</button>`).join('') + '</div><div class="flex gap-2"><input id="chat-in" maxlength="1000" autocomplete="off" placeholder="Сообщение" class="flex-1 min-w-0 border-2 p-3 rounded-lg"><button data-act="send" class="px-4 bg-blue-600 text-white font-bold rounded-lg">➤</button></div></div>';
+  $('chat-msgs').innerHTML = msgs.map(m => { const me = m.user_id === ses.uid; return `<div class="flex ${me ? 'justify-end' : ''} gap-2"><div class="max-w-[80%] rounded-xl p-2 ${me ? 'bg-blue-100' : 'bg-white'} shadow-sm"><div class="text-xs text-gray-500">${esc(m.avatar || '')} <b>${esc(m.name)}</b> · ${hhmm(m.created_at)}</div><div class="whitespace-pre-wrap break-words">${esc(m.text)}</div></div></div>`; }).join('') || '<p class="text-center text-gray-400 py-8">Сообщений пока нет</p>';
+  window.scrollTo(0, document.body.scrollHeight);
+}
+async function sendMsg() {
+  const i = $('chat-in'), t = i.value.trim(); if (!t) return; i.value = '';
+  const { error } = await db.from('messages').insert({ user_id: ses.uid, name: ses.name, avatar: ses.avatar, text: t });
+  if (error) { i.value = t; toast(error.message); }
 }
 
 // ===== Опции =====
 function rSet() {
   const ck = (k, n) => `<label class="flex items-center gap-3 py-2"><input type="checkbox" data-col="${k}" ${cols[k] ? 'checked' : ''} class="w-6 h-6"> ${n}</label>`;
-  $('v-set').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">Показывать колонки (на этом телефоне)</h3>${ck('uzk', 'УЗК — отсорт')}${ck('minus', 'УЗК — минус (стенка)')}${ck('mpd1', 'МПД 1')}${ck('mpd2', 'МПД 2')}${ck('curve', 'Кривая')}</div>
-  <div class="bg-white rounded-xl p-4 shadow-sm text-sm space-y-1"><div><b>Смена:</b> ${esc(S.sh.name)}</div><div><b>Роль:</b> ${ROLES[S.role]}</div>${S.pass ? '<div><b>Пароль для коллег:</b> ' + esc(S.pass) + '</div>' : ''}</div>` +
-    (S.role === 'uzk' ? mb('closeshift', 'Завершить смену', 'bg-red-600 text-white') : '') + mb('leave', 'Выйти из смены', 'bg-gray-300 text-gray-800');
+  $('v-set').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">Показывать колонки (на этом телефоне)</h3>${ck('uzk', 'УЗК — отсорт')}${ck('minus', 'УЗК — минус (стенка)')}${ck('mpd', 'МПД')}${ck('curve', 'Кривая')}</div>
+  <div class="bg-white rounded-xl p-4 shadow-sm text-sm space-y-1"><div>${esc(ses.avatar)} <b>${esc(ses.name)}</b> · ${ROLES[ses.role]}${ses.pin ? ' · 🔒' : ''}</div></div>` +
+    mb('pin', ses.pin ? 'Изменить / убрать пароль учётки' : 'Защитить учётку паролем', 'bg-gray-300 text-gray-800') + mb('logout', 'Сменить пользователя / роль', 'bg-gray-300 text-gray-800');
+}
+function pinModal() {
+  modal('<h3 class="font-bold text-center text-lg">Пароль учётки</h3>' + (ses.pin ? inp('p-old', 'Текущий пароль', 'type="password"') : '') + inp('p-new', ses.pin ? 'Новый пароль (пусто — убрать)' : 'Новый пароль', 'type="password"') + mb('pinsave', 'Сохранить', 'bg-blue-600 text-white') + mb('close', 'Отмена', 'text-gray-500'));
 }
 
-// ===== Кнопки =====
+// ===== Все кнопки =====
 document.addEventListener('click', async e => {
   const t = e.target.closest('[data-tab]'); if (t) return setTab(t.dataset.tab);
   const b = e.target.closest('[data-act]'); if (!b) return; const d = b.dataset;
   switch (d.act) {
-    case 'create': return createShift();
-    case 'join': return joinShift();
-    case 'role': S.role = d.r; return showStart();
+    case 'ws': { const { data, error } = await db.rpc('ws_join', { p_pass: $('w-pass').value }); if (error) return toast(error.message); if (data === 'wrong') return toast('Неверный пароль цеха'); ses = { ws: true }; saveS(); return toUsers(); }
+    case 'users': return toUsers();
+    case 'newuser': st.nm = ''; return startUI('new');
+    case 'av': st.nm = $('n-name').value; st.av = d.a; return startUI('new');
+    case 'create': { const name = $('n-name').value.trim(); if (name.length < 2) return toast('Имя — минимум 2 символа'); const { data, error } = await db.rpc('register_user', { p_name: name, p_avatar: st.av }); if (error) return toast(/name_taken/.test(error.message) ? 'Такое имя уже есть' : error.message); st.pick = { id: data, name, avatar: st.av, has_pin: false }; return startUI('role'); }
+    case 'pick': st.pick = st.users.find(u => u.id === d.id); return startUI('role');
+    case 'role': st.role = d.r; { const pin = $('l-pin') && $('l-pin').value; startUI('role'); if (pin) $('l-pin').value = pin; return; }
+    case 'login': return doLogin();
+    case 'logout': return logout();
+    case 'online': return onlineModal();
+    case 'vs': view = d.id === cur.id ? cur : grace; return fetchAll();
     case 'close': return closeM();
-    case 'mpdset': setMpd(d.id, d.c, d.v); return closeM();
-    case 'uzkt': { const p = pipes.find(x => x.id === d.id); const cur = p.uzk_def === 'N' ? '' : p.uzk_def; const nw = L.filter(l => cur.includes(l) !== (l === d.l)).join(''); await patch(d.id, { uzk_def: nw || 'N' }); return uzkModal(d.id); }
-    case 'uzkset': patch(d.id, { uzk_def: 'N' }); return closeM();
-    case 'minsave': { const v = parseFloat($('m-val').value.replace(',', '.')); if (!(v > 0)) return toast('Введите толщину числом'); patch(d.id, { uzk_minus: v }); return closeM(); }
-    case 'minreset': patch(d.id, { uzk_minus: null }); return closeM();
+    case 'mpdset': setMpd(d.id, d.v); return closeM();
+    case 'uzkt': { const p = pipes.find(x => x.id === d.id), c0 = p.uzk_def === 'N' ? '' : p.uzk_def, nw = L.filter(l => c0.includes(l) !== (l === d.l)).join(''); await setUzk(d.id, { uzk_def: nw || 'N' }); return uzkModal(d.id); }
+    case 'uzkset': setUzk(d.id, { uzk_def: 'N' }); return closeM();
+    case 'minsave': { const v = parseFloat($('m-val').value.replace(',', '.')); if (!(v > 0)) return toast('Введите толщину числом'); setUzk(d.id, { uzk_minus: v }); return closeM(); }
+    case 'minreset': setUzk(d.id, { uzk_minus: null }); return closeM();
     case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (pipes.some(x => x.id !== d.id && x.pipe_number === v)) return toast('Такой номер уже есть'); patch(d.id, { pipe_number: v }); return closeM(); }
     case 'edel': { if (!confirm('Удалить трубу?')) return; closeM(); const { error } = await db.from('pipes').delete().eq('id', d.id); if (error) return toast(error.message); pipes = pipes.filter(x => x.id !== d.id); return render(); }
     case 'sortform': return sortForm(d.next);
     case 'sortsave': return sortSave();
     case 'sortdel': { if (!confirm('Удалить сортамент вместе со всеми его трубами?')) return; const { error } = await db.from('sortaments').delete().eq('id', d.id); if (error) return toast(error.message); return fetchAll(); }
-    case 'share': return share(false);
-    case 'copy': return share(true);
-    case 'closeshift': { if (!confirm('Завершить смену? Новые коллеги по паролю уже не смогут войти.')) return; const { error } = await db.rpc('close_shift', { p_id: S.sh.id }); return error ? toast(error.message) : toast('Смена закрыта для новых входов'); }
-    case 'leave': return leave();
+    case 'share': return share(reportText(), false);
+    case 'copy': return share(reportText(), true);
+    case 'af': readArch(); arch[d.k] = d.v; return rArch();
+    case 'aload': return archLoad();
+    case 'aopen': return archOpen(d.id, d.d, d.t);
+    case 'aback': arch.det = null; return rArch();
+    case 'ashare': return share(reportOf(arch.det.sh, arch.det.rows, p => p.sortaments), false);
+    case 'emo': $('chat-in').value += d.e; return $('chat-in').focus();
+    case 'send': return sendMsg();
+    case 'pin': return pinModal();
+    case 'pinsave': { const { data, error } = await db.rpc('set_pin', { p_id: ses.uid, p_new: $('p-new').value, p_old: $('p-old') ? $('p-old').value : '' }); if (error) return toast(error.message); if (!data) return toast('Неверный текущий пароль'); ses.pin = !!$('p-new').value; saveS(); closeM(); toast(ses.pin ? 'Пароль установлен' : 'Пароль убран'); return render(true); }
   }
 });
-document.addEventListener('change', e => { const k = e.target.dataset.col; if (k) { cols[k] = e.target.checked ? 1 : 0; localStorage.setItem('cols', JSON.stringify(cols)); } });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'chat-in') sendMsg(); });
 $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeM(); });
 
 // ===== Старт =====
@@ -335,10 +475,10 @@ function init() {
   const c = window.APP_CONFIG || {};
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(c.url || '') || (c.key || '').length < 20) { setStatus('Нет ключей', 'bg-red-600'); return; }
   db = window.supabase.createClient(c.url, c.key);
-  subscribe();
-  S.sh ? enter() : showStart();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.sh) fetchAll(); });
-  window.addEventListener('online', () => { if (S.sh) fetchAll(); });
+  setStatus('Готово', 'bg-emerald-600');
+  if (ses.uid) enter(); else if (ses.ws) toUsers(); else startUI('ws');
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ses.uid && cur) { rollover(); fetchAll(); loadMsgs(); } });
+  window.addEventListener('online', () => { if (ses.uid && view) fetchAll(); });
 }
 try { init(); } catch (e) { setStatus('ОШИБКА', 'bg-red-600'); showErr(e.message); }
 </script>
