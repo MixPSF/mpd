@@ -22,6 +22,15 @@
 <style>
   body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; padding-bottom: 72px; }
   input, textarea, select { -webkit-user-select: text; user-select: text; }
+  body.dark { background: #0b1220; color: #e2e8f0; }
+  body.dark .bg-white { background: #1e293b; } body.dark .bg-gray-100 { background: #0b1220; }
+  body.dark .bg-gray-200 { background: #334155; } body.dark .bg-gray-300 { background: #475569; color: #e2e8f0; }
+  body.dark .bg-blue-100 { background: #1e3a8a; } body.dark .bg-red-100 { background: #450a0a; }
+  body.dark .text-slate-800, body.dark .text-slate-700, body.dark .text-gray-800, body.dark .text-gray-700 { color: #e2e8f0; }
+  body.dark .text-slate-600, body.dark .text-slate-500, body.dark .text-gray-600, body.dark .text-gray-500, body.dark .text-slate-400, body.dark .text-gray-400 { color: #94a3b8; }
+  body.dark .text-red-800 { color: #fecaca; }
+  body.dark input, body.dark textarea, body.dark select { background: #0b1220; color: #e2e8f0; }
+  body.dark * { border-color: #475569; }
   body.kb #nav { display: none !important; } body.kb #chat-form { bottom: 0 !important; }
 </style>
 </head>
@@ -29,6 +38,7 @@
 <header class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md flex justify-between items-center gap-2">
   <h1 class="font-bold text-base truncate" id="hdr">Цех МПД / УЗК</h1>
   <div class="flex items-center gap-2 shrink-0">
+    <button id="theme" data-act="theme" class="text-base px-2 py-1 bg-slate-600 rounded">🌓</button>
     <button id="online" data-act="online" class="hidden text-xs px-2 py-1 bg-slate-600 rounded">👥 0</button>
     <span id="sync-status" class="text-xs px-2 py-1 bg-yellow-600 rounded">Подключение...</span>
   </div>
@@ -82,9 +92,17 @@ let ses = JSON.parse(localStorage.getItem('ses4') || '{}');
 let cols = Object.assign({ uzk: 1, minus: 1, mpd: 1, curve: 0 }, JSON.parse(localStorage.getItem('cols') || '{}'));
 let st = { step: 'ws', users: [], pick: null, av: AVS[0], nm: '', role: 'uzk' };
 let arch = { from: addDays(curKey().date, -14), to: curKey().date, pl: '', letter: '', type: '', sort: 'date', rows: null, det: null, q: '' };
+let theme = localStorage.getItem('theme') || 'auto';
+const THN = { auto: '🌓', day: '☀️', night: '🌙' };
+function applyTheme() {
+  const night = theme === 'night' || (theme === 'auto' && curKey().type === 'N');
+  document.body.classList.toggle('dark', night); $('theme').textContent = THN[theme];
+  document.querySelector('meta[name=theme-color]').content = night ? '#0b1220' : '#1e293b';
+}
+const setTheme = t => { theme = t; localStorage.setItem('theme', t); applyTheme(); if (ses.uid && cur) render(true); };
 const saveS = () => localStorage.setItem('ses4', JSON.stringify(ses));
 const role = () => ses.role;
-const can = c => role() === 'uzk' || (role() === 'mpd' && (c === 'mpd1' || c === 'mpd2'));
+const can = c => role() === 'uzk' ? (c === 'uzk' || c === 'minus' || c === 'curve') : role() === 'mpd' && (c === 'mpd1' || c === 'mpd2');
 
 const modal = h => { $('modal').innerHTML = '<div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-2 max-h-[90vh] overflow-y-auto">' + h + '</div>'; $('modal').classList.remove('hidden'); };
 const closeM = () => $('modal').classList.add('hidden');
@@ -136,7 +154,7 @@ async function loadShift() {
   await fetchAll();
 }
 function rollover() {
-  if (!cur) return; const k = curKey();
+  applyTheme(); if (!cur) return; const k = curKey();
   if (cur.shift_date !== k.date || cur.shift_type !== k.type) { view = null; loadShift().then(() => { render(); toast('Новая смена: ' + sTitle(cur)); }); }
   else if (view && view.id !== cur.id && !live(view.shift_date, view.shift_type)) { view = cur; fetchAll(); }
 }
@@ -226,8 +244,8 @@ const isOtk = () => role() === 'otk';
 const uLab = p => isOtk() ? (p.uzk_def === 'N' ? 'N' : RA) : p.uzk_def;
 const mnLab = p => p.uzk_minus == null ? 'N' : (isOtk() ? 'S-' : p.uzk_minus);
 const mLab = v => isOtk() ? (v === 'ЗАК' ? OBR : (v === H || v === V) ? RA : v) : v;
-function cell(p, c, label, val, cls) {
-  return `<button data-id="${p.id}" data-c="${c}" class="flex-1 h-14 rounded-lg flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[10px] opacity-80 font-normal leading-tight">${label}</span><span class="font-black text-lg leading-tight">${esc(val)}</span></button>`;
+function cell(p, c, label, val, cls, tm) {
+  return `<button data-id="${p.id}" data-c="${c}" class="flex-1 min-w-0 h-16 rounded-lg flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[10px] opacity-80 font-normal leading-tight">${label}</span><span class="font-black text-lg leading-tight">${esc(val)}</span><span class="text-[9px] opacity-80 leading-tight h-3">${tm || ''}</span></button>`;
 }
 function rList() {
   let last = null, h = shiftBar();
@@ -237,13 +255,13 @@ function rList() {
       last = p.sort_id; const s = sortOf(p.sort_id);
       if (s) h += `<div class="text-xs text-slate-500 font-semibold px-1 pt-2">${esc(s.diameter)} x ${esc(s.wall)} ${esc(s.grade)}${s.plavka ? ' · пл. ' + esc(s.plavka) : ''}${s.party ? ' · парт. ' + esc(s.party) : ''}</div>`;
     }
-    let b = '', m = '';
-    if (cols.uzk) b += cell(p, 'uzk', 'УЗК', uLab(p), p.uzk_def === 'N' ? MC.N : MC[RA]);
-    if (cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white');
+    let b = '';
+    if (cols.uzk) b += cell(p, 'uzk', 'УЗК', uLab(p), p.uzk_def === 'N' ? MC.N : MC[RA], p.uzk_def !== 'N' ? hhmm(p.uzk_at) : '');
+    if (cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white', p.uzk_minus != null ? hhmm(p.uzk_at) : '');
+    if (cols.mpd) b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД к.' + n, v, MC[v] || MC['-'], hhmm(p['mpd' + n + '_at'])); }).join('');
     if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600');
-    if (cols.mpd) m = ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']), at = p['mpd' + n + '_at']; return cell(p, 'mpd' + n, 'МПД · конец ' + n + (at ? ' · ' + hhmm(at) : ''), v, MC[v] || MC['-']); }).join('');
     h += `<div class="bg-white p-2 rounded-xl shadow-sm border border-gray-200"><div class="flex items-center gap-2 mb-1"><span class="w-9 text-right font-bold text-slate-400">${p.seq}</span>
-      <span data-edit="${p.id}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all">${esc(p.pipe_number)}</span></div>${b ? `<div class="flex gap-1">${b}</div>` : ''}${m ? `<div class="flex gap-1 mt-1">${m}</div>` : ''}</div>`;
+      <span data-edit="${p.id}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all">${esc(p.pipe_number)}</span></div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
   });
   $('v-list').innerHTML = h;
 }
@@ -420,6 +438,7 @@ document.addEventListener('focusout', e => { if (e.target.id === 'chat-in') docu
 function rSet() {
   const ck = (k, n) => `<label class="flex items-center gap-3 py-2"><input type="checkbox" data-col="${k}" ${cols[k] ? 'checked' : ''} class="w-6 h-6"> ${n}</label>`;
   $('v-set').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">Показывать колонки (на этом телефоне)</h3>${ck('uzk', 'УЗК — отсорт')}${ck('minus', 'УЗК — минус (стенка)')}${ck('mpd', 'МПД')}${ck('curve', 'Кривая')}</div>
+  <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-2">Режим</h3><div class="grid grid-cols-3 gap-1 text-center text-sm">${[['auto', '🌓 Авто'], ['day', '☀️ День'], ['night', '🌙 Ночь']].map(([k, n]) => `<button data-act="themeset" data-v="${k}" class="py-2 rounded ${theme === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('')}</div><p class="text-xs text-gray-500 mt-1">Авто: тёмная тема в ночную смену (19–07)</p></div>
   <div class="bg-white rounded-xl p-4 shadow-sm text-sm space-y-1"><div>${esc(ses.avatar)} <b>${esc(ses.name)}</b> · ${ROLES[ses.role]}${ses.pin ? ' · 🔒' : ''}</div></div>` +
     mb('pin', ses.pin ? 'Изменить / убрать пароль учётки' : 'Защитить учётку паролем', 'bg-gray-300 text-gray-800') + mb('logout', 'Сменить пользователя / роль', 'bg-gray-300 text-gray-800') +
     (localStorage.getItem('owner3') ? mb('wschange', 'Сменить пароль цеха (владелец)', 'bg-gray-300 text-gray-800') : '');
@@ -445,6 +464,8 @@ document.addEventListener('click', async e => {
     case 'role': st.role = d.r; { const pin = $('l-pin') && $('l-pin').value; startUI('role'); if (pin) $('l-pin').value = pin; return; }
     case 'login': return doLogin();
     case 'logout': return logout();
+    case 'theme': return setTheme({ auto: 'day', day: 'night', night: 'auto' }[theme]);
+    case 'themeset': return setTheme(d.v);
     case 'online': return onlineModal();
     case 'vs': view = d.id === cur.id ? cur : grace; return fetchAll();
     case 'close': return closeM();
@@ -476,6 +497,7 @@ $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeM(
 // ===== Старт =====
 function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  applyTheme();
   const c = window.APP_CONFIG || {};
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(c.url || '') || (c.key || '').length < 20) { setStatus('Нет ключей', 'bg-red-600'); return; }
   db = window.supabase.createClient(c.url, c.key);
