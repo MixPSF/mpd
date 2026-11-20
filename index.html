@@ -130,7 +130,7 @@ function startUI(step) {
   if (step === 'users') h = card('Кто вы?', st.users.map(u => `<button data-act="pick" data-id="${u.id}" class="w-full py-3 px-3 text-left bg-gray-100 rounded-lg font-semibold">${esc(u.avatar)} ${esc(u.name)} ${u.has_pin ? '🔒' : ''}</button>`).join('') + mb('newuser', '➕ Новый пользователь', 'bg-blue-600 text-white')) + admLink();
   if (step === 'new') h = card('Новый пользователь', inp('n-name', 'Имя / ник', `value="${esc(st.nm)}" maxlength="30"`) +
     '<div class="grid grid-cols-8 gap-1">' + AVS.map(a => `<button data-act="av" data-a="${a}" class="text-2xl py-1 rounded ${a === st.av ? 'bg-blue-200' : ''}">${a}</button>`).join('') + '</div>' +
-    mb('create', 'Создать', 'bg-blue-600 text-white') + mb('users', 'Назад', 'text-gray-500'));
+    mb('create', 'Создать', 'bg-blue-600 text-white') + mb('users', 'Назад', 'text-gray-500')) + admLink();
   if (step === 'role') h = card(esc(st.pick.avatar) + ' ' + esc(st.pick.name), (st.pick.has_pin ? inp('l-pin', 'Пароль учётки', 'type="password"') : '') +
     '<div class="grid grid-cols-3 gap-1 text-center font-semibold">' + Object.keys(ROLES).map(r => `<button data-act="role" data-r="${r}" class="py-3 rounded ${r === st.role ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">${ROLES[r]}</button>`).join('') + '</div>' +
     mb('login', 'Войти', 'bg-emerald-600 text-white') + mb('users', 'Назад', 'text-gray-500'));
