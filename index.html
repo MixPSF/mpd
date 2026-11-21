@@ -72,6 +72,7 @@ const CY = ['-', 'N', H, V, 'ЗАК'];
 const RA = '\u0420/\u0410', OBR = '\u041e\u0411\u0420';
 const MC = { [RA]: 'bg-red-600 text-white', [OBR]: 'bg-purple-700 text-white', '-': 'bg-gray-200 text-gray-600', N: 'bg-emerald-600 text-white', [H]: 'bg-red-600 text-white', [V]: 'bg-orange-600 text-white', 'ЗАК': 'bg-purple-700 text-white' };
 const CATS = [V, H, P, V + H, V + P, H + P, V + H + P];
+const FEATURES = { cal: false };   // вкладка «Отпуска»: поставьте true, чтобы вернуть
 const ROLES = { uzk: 'УЗК', mpd: 'МПД', otk: 'ОТК' }, RN = Object.assign({ admin: 'Админ' }, ROLES);
 const AVS = ['😀', '😎', '🤠', '👷', '🦊', '🐻', '🐯', '🦁', '🐸', '🐼', '🦉', '🚀', '⚙️', '🔧', '⭐', '🔥'];
 // Бригады: день D(d) идёт по кругу Б,А,В,Г с 17.11.2026; ночь d→d+1 работает та же бригада, что была днём d-1
@@ -279,11 +280,11 @@ function tabsDef() {
   if (uzkish()) t.push(['sort', '➕', 'Сортамент']);
   if (r !== 'mpd') t.push(['stat', '📊', 'Отчёт']);
   if (uzkish()) t.push(['arch', '🗄', 'Архив']);
+  if (FEATURES.cal) t.push(['cal', '🏖', 'Отпуска']);
   t.push(['games', '🎮', 'Игры'], ['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
   if (r === 'admin') t.push(['admin', '🛡', 'Админ']);
   return t;
 }
-
 function navUpd() {
   $('nav').innerHTML = tabsDef().map(([k, i, n]) => `<button data-tab="${k}" class="py-2 flex-1 min-w-[58px] relative ${k === tab ? 'bg-blue-600 font-bold' : ''}"><div class="text-lg leading-none">${i}</div>${n}${k === 'chat' && unread ? `<span class="absolute top-0 right-2 bg-red-600 rounded-full px-1 text-[10px]">${unread}</span>` : ''}</button>`).join('');
 }
@@ -855,10 +856,10 @@ document.addEventListener('click', async e => {
     case 'uzkset': setUzk(d.id, { uzk_def: 'N' }); return closeM();
     case 'minsave': { const v = parseFloat($('m-val').value.replace(',', '.')); if (!(v > 0)) return toast('Введите толщину числом'); setUzk(d.id, { uzk_minus: v }); return closeM(); }
     case 'minreset': setUzk(d.id, { uzk_minus: null }); return closeM();
-    case 'edel': { if (!confirm('Удалить трубу?')) return; closeM(); const { error } = await db.from('pipes').delete().eq('id', d.id); if (error) return toast(error.message); pipes = pipes.filter(x => x.id !== d.id); return render(); }
+    case 'edel': { if (!confirm('Удалить трубу? Нумерация ниже сдвинется.')) return; closeM(); const { error } = await db.rpc('delete_pipe', { p_id: d.id }); if (error) return toast(error.message); return fetchAll(); }
     case 'sortform': return sortForm(d.next);
     case 'sortsave': return sortSave();
-    case 'sortdel': { if (!confirm('Удалить сортамент вместе со всеми его трубами?')) return; const { error } = await db.from('sortaments').delete().eq('id', d.id); if (error) return toast(error.message); return fetchAll(); }
+    case 'sortdel': { if (!confirm('Удалить сортамент вместе со всеми его трубами?')) return; const { error } = await db.rpc('delete_sortament', { p_id: d.id }); if (error) return toast(error.message); return fetchAll(); }
     case 'share': return share(reportText(), false);
     case 'copy': return share(reportText(), true);
     case 'af': readArch(); arch[d.k] = d.v; return rArch();
