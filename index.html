@@ -101,6 +101,7 @@ const sTitle = s => (s.shift_type === 'D' ? '☀️ День' : '🌙 Ночь')
 
 // ===== Состояние =====
 let db, ch, pipes = [], sorts = [], msgs = [], cur = null, view = null, grace = null, tab = 'list', unread = 0, tick = null;
+let fixTried = '', rfT = null;
 const q = {}, lastEdit = {}; let touching = false, needR = false, tick2 = null, alertSt = null, alertTimer = null;
 let ses = JSON.parse(localStorage.getItem('ses4') || '{}');
 let cols = Object.assign({ uzk: 1, minus: 1, mpd: 1, curve: 0 }, JSON.parse(localStorage.getItem('cols') || '{}'));
@@ -209,7 +210,11 @@ async function fetchAll() {
     db.from('pipes').select('*').eq('shift_id', id).order('seq').order('created_at')]);
   const er = a.error || b.error;
   if (er) { setStatus('Ошибка загрузки', 'bg-red-600'); return showErr((er.code || '') + ' ' + er.message); }
-  showErr(''); sorts = a.data; pipes = b.data; render();
+  showErr(''); sorts = a.data; pipes = b.data;
+  const gap = pipes.some((p, i) => p.seq !== i + 1), key = id + ':' + pipes.length;
+  pipes.forEach((p, i) => { p.dbseq = p.seq; p.seq = i + 1; });                       // показываем 1, 2, 3 … подряд
+  if (gap && fixTried !== key) { fixTried = key; db.rpc('renumber_shift', { p_shift: id }); }   // и выравниваем в базе
+  render();
   try { localStorage.setItem('snap', JSON.stringify({ cur, view, grace, pipes, sorts })); } catch (e) {}
 }
 async function loadMsgs() {
@@ -223,12 +228,12 @@ function startRT() {
   ch = db.channel('mpd_ch', { config: { presence: { key: ses.uid } } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pipes' }, p => {
       if (!view) return;
-      if (p.eventType === 'DELETE') { pipes = pipes.filter(x => x.id !== p.old.id); return render(); }
+      if (p.eventType === 'DELETE') { pipes = pipes.filter(x => x.id !== p.old.id); return refetchSoon(); }
       if (p.new.shift_id !== view.id) return;
-      const id = p.new.id, had = pipes.some(x => x.id === id);
-      if (p.eventType === 'UPDATE' && had && (q[id] || Date.now() - (lastEdit[id] || 0) < 2500)) return;   // эхо наших же правок не трогаем
-      up(pipes, p.new); pipes.sort((a, b) => a.seq - b.seq || a.created_at.localeCompare(b.created_at));
-      if (p.eventType === 'UPDATE' && had) updRow(id, true); else render();
+      const id = p.new.id, cur = pipes.find(x => x.id === id);
+      if (!cur || p.new.seq !== cur.dbseq) return refetchSoon();                          // вставка / удаление / смена порядка
+      if (q[id] || Date.now() - (lastEdit[id] || 0) < 2500) return;                       // эхо наших же правок не трогаем
+      const keep = cur.seq; Object.assign(cur, p.new, { seq: keep }); updRow(id, true);
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sortaments' }, p => {
       if (!view) return;
@@ -252,6 +257,7 @@ function startRT() {
       else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(s)) setStatus('Нет связи', 'bg-red-600');
     });
 }
+function refetchSoon() { clearTimeout(rfT); rfT = setTimeout(() => { if (view && (touching || Object.keys(q).length)) refetchSoon(); else if (view) fetchAll(); }, 450); }
 function stopRT() { if (ch) { db.removeChannel(ch); ch = null; } clearInterval(tick); clearInterval(tick2); }
 function onlineModal() {
   const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(Boolean);
@@ -420,7 +426,7 @@ function sortForm(next) {
   modal('<h3 class="font-bold text-center text-lg">Добавить трубы</h3>' +
     `<select id="f-sel" class="w-full border-2 p-3 rounded-lg"><option value="">➕ Новый сортамент</option>${sorts.map(s => `<option value="${s.id}">${esc(sLabel(s))}</option>`).join('')}</select>` +
     `<div id="f-new" class="space-y-2">${inp('f-p', 'Плавка')}${inp('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"')}${inp('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"')}${inp('f-g', 'Марка стали (N80Q)')}${inp('f-n', 'Номер партии')}</div>` +
-    '<label class="block text-xs text-gray-600">Нумерация в списке начинается с №</label>' + inp('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
+    '<label class="block text-xs text-gray-600">Поставить на позицию № (остальные сдвинутся вниз)</label>' + inp('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
     '<textarea id="f-nums" rows="4" placeholder="Номера: через пробел, запятую, с новой строки или диапазоном 5525-5530" class="w-full border-2 p-3 rounded-lg uppercase"></textarea><p id="f-prev" class="text-xs text-gray-500"></p>' +
     mb('sortsave', 'Добавить', 'bg-blue-600 text-white') + mb('close', 'Отмена', 'text-gray-500'));
 }
@@ -443,9 +449,11 @@ async function sortSave() {
     const { data, error } = await db.from('sortaments').insert({ shift_id: view.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n') }).select().single();
     if (error) return toast(error.message); sid = created = data.id;
   }
-  const start = parseInt(g('f-s')) || 1;
+  const start = Math.min(Math.max(parseInt(g('f-s')) || pipes.length + 1, 1), pipes.length + 1);   // пробелов быть не может
+  if (start <= pipes.length) await db.rpc('make_room', { p_shift: view.id, p_at: start, p_count: fresh.length });
   const { error: e2 } = await db.from('pipes').insert(fresh.map((n, i) => ({ shift_id: view.id, sort_id: sid, seq: start + i, pipe_number: n, added_by: ses.name })));
-  if (e2) { if (created) await db.from('sortaments').delete().eq('id', created); return toast(e2.message); }
+  if (e2) { if (created) await db.from('sortaments').delete().eq('id', created); await db.rpc('renumber_shift', { p_shift: view.id }); return toast(e2.message); }
+  await db.rpc('renumber_shift', { p_shift: view.id });
   closeM(); toast(`Добавлено труб: ${fresh.length}` + (nums.length - fresh.length ? `, дублей пропущено: ${nums.length - fresh.length}` : '')); await fetchAll(); setTab('list');
 }
 
@@ -503,7 +511,7 @@ function rArch() {
 async function archOpen(id, d, t) {
   const [a, b] = await Promise.all([db.from('pipes').select('*, sortaments(plavka,diameter,wall,grade)').eq('shift_id', id).order('seq'), 0]);
   if (a.error) return toast(a.error.message);
-  arch.det = { sh: { id, shift_date: d, shift_type: t }, rows: a.data }; arch.q = ''; rArch();
+  arch.det = { sh: { id, shift_date: d, shift_type: t }, rows: a.data.map((p, i) => Object.assign(p, { seq: i + 1 })) }; arch.q = ''; rArch();
 }
 function rArchDet(v) {
   const { sh, rows } = arch.det, q = arch.q.toUpperCase();
