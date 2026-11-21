@@ -279,10 +279,11 @@ function tabsDef() {
   if (uzkish()) t.push(['sort', '➕', 'Сортамент']);
   if (r !== 'mpd') t.push(['stat', '📊', 'Отчёт']);
   if (uzkish()) t.push(['arch', '🗄', 'Архив']);
-  t.push(['cal', '🏖', 'Отпуска'], ['games', '🎮', 'Игры'], ['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
+  t.push(['games', '🎮', 'Игры'], ['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
   if (r === 'admin') t.push(['admin', '🛡', 'Админ']);
   return t;
 }
+
 function navUpd() {
   $('nav').innerHTML = tabsDef().map(([k, i, n]) => `<button data-tab="${k}" class="py-2 flex-1 min-w-[58px] relative ${k === tab ? 'bg-blue-600 font-bold' : ''}"><div class="text-lg leading-none">${i}</div>${n}${k === 'chat' && unread ? `<span class="absolute top-0 right-2 bg-red-600 rounded-full px-1 text-[10px]">${unread}</span>` : ''}</button>`).join('');
 }
