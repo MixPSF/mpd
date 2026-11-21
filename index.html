@@ -330,7 +330,7 @@ const mLab = v => isOtk() ? (v === 'ЗАК' ? OBR : (v === H || v === V) ? RA : 
 function cell(p, c, label, val, cls, fixed) {
   return `<button data-id="${p.id}" data-c="${c}" class="${fixed ? 'w-16 flex-none' : 'flex-1 min-w-0'} h-8 rounded-md flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[9px] opacity-80 font-normal leading-none">${label}</span><span class="font-black text-[15px] leading-tight">${esc(val)}</span></button>`;
 }
-const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">' + (mo ? 'А' : 'повтор') + '</span>' : p.kind === 'probe' ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">' + (mo ? 'П' : 'проба') + '</span>' : '')
+const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">' + (mo ? 'П' : 'повтор') + '</span>' : p.kind === 'probe' && !mo ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
   + (!mo && (p.plavka || p.party) ? `<span class="text-[10px] text-gray-500 truncate max-w-[40%]">${p.plavka ? 'пл.' + esc(p.plavka) : ''} ${p.party ? 'п.' + esc(p.party) : ''}</span>` : '');
 function jumpVis() {       // стрелка вниз: только в списке, когда он длинный и мы не у самого низа
   const j = $('jump'), near = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
@@ -515,10 +515,13 @@ function reportOf(sh, arr, info) {
   return `КНК за смену ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} ${sh.shift_type === 'D' ? '(день)' : '(ночь)'}:\n` + blocks.join('\n\n');
 }
 const mpdBad = v => v === H || v === V || v === 'ЗАК';
-function mpdReport() {            // отчёт для МПД: «Прошло» = отмечены оба конца
+function mpdReport() {            // отчёт МПД: суммы по типоразмеру и марке, все плавки, повторы и пробы вместе
   const f = x => String(x == null ? '' : x).replace('.', ','), done = pipes.filter(p => p.mpd1_val !== '-' && p.mpd2_val !== '-').length, g = new Map();
-  pipes.forEach(p => { if (!g.has(p.sort_id)) g.set(p.sort_id, []); g.get(p.sort_id).push(p); });
-  const blocks = [...g.entries()].map(([sid, arr]) => { const s = sortOf(sid) || {}; return `${f(s.diameter)}*${f(s.wall)} ${s.grade || ''}`.trim() + `\nОтсорт МПД1 ${arr.filter(p => mpdBad(p.mpd1_val)).length}\nОтсорт МПД2 ${arr.filter(p => mpdBad(p.mpd2_val)).length}`; });
+  pipes.forEach(p => {
+    const s = sortOf(p.sort_id) || {}, k = [s.diameter, s.wall, s.grade].map(x => String(x || '').trim().toUpperCase()).join('|');
+    if (!g.has(k)) g.set(k, { s, arr: [] }); g.get(k).arr.push(p);
+  });
+  const blocks = [...g.values()].map(({ s, arr }) => `${f(s.diameter)}*${f(s.wall)} ${s.grade || ''}`.trim() + `\nОтсорт МПД1 ${arr.filter(p => mpdBad(p.mpd1_val)).length}\nОтсорт МПД2 ${arr.filter(p => mpdBad(p.mpd2_val)).length}`);
   return `За смену ${sDate(view)} ${view.shift_type === 'D' ? 'день' : 'ночь'}\nПрошло ${done} труб` + (blocks.length ? '\n' + blocks.join('\n\n') : '');
 }
 const reportText = () => role() === 'mpd' ? mpdReport() : reportOf(view, pipes, p => sortOf(p.sort_id));
