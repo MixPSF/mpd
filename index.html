@@ -294,10 +294,11 @@ const sortOf = id => sorts.find(s => s.id === id);
 function tabsDef() {
   const r = role(), t = [['list', '📋', 'Список']];
   if (uzkish()) t.push(['sort', '➕', 'Сортамент']);
-  if (r !== 'mpd') t.push(['stat', '📊', 'Отчёт']);
+  t.push(['stat', '📊', 'Отчёт']);
   if (uzkish()) t.push(['arch', '🗄', 'Архив']);
   if (FEATURES.cal) t.push(['cal', '🏖', 'Отпуска']);
-  t.push(['games', '🎮', 'Игры'], ['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
+  if (r !== 'mpd') t.push(['games', '🎮', 'Игры']);
+  t.push(['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
   if (r === 'admin') t.push(['admin', '🛡', 'Админ']);
   return t;
 }
@@ -327,9 +328,9 @@ const uLab = p => isOtk() ? (p.uzk_def === 'N' ? 'N' : RA) : p.uzk_def;
 const mnLab = p => p.uzk_minus == null ? 'N' : (isOtk() ? 'S-' : p.uzk_minus);
 const mLab = v => isOtk() ? (v === 'ЗАК' ? OBR : (v === H || v === V) ? RA : v) : v;
 function cell(p, c, label, val, cls, fixed) {
-  return `<button data-id="${p.id}" data-c="${c}" class="${fixed ? 'w-20 flex-none' : 'flex-1 min-w-0'} h-8 rounded-md flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[9px] opacity-80 font-normal leading-none">${label}</span><span class="font-black text-[15px] leading-tight">${esc(val)}</span></button>`;
+  return `<button data-id="${p.id}" data-c="${c}" class="${fixed ? 'w-16 flex-none' : 'flex-1 min-w-0'} h-8 rounded-md flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[9px] opacity-80 font-normal leading-none">${label}</span><span class="font-black text-[15px] leading-tight">${esc(val)}</span></button>`;
 }
-const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">повтор</span>' : p.kind === 'probe' ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
+const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">' + (mo ? 'А' : 'повтор') + '</span>' : p.kind === 'probe' ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">' + (mo ? 'П' : 'проба') + '</span>' : '')
   + (!mo && (p.plavka || p.party) ? `<span class="text-[10px] text-gray-500 truncate max-w-[40%]">${p.plavka ? 'пл.' + esc(p.plavka) : ''} ${p.party ? 'п.' + esc(p.party) : ''}</span>` : '');
 function jumpVis() {       // стрелка вниз: только в списке, когда он длинный и мы не у самого низа
   const j = $('jump'), near = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
@@ -355,7 +356,7 @@ function rowHTML(p) {
   if (cols.mpd) b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], mo); }).join('');
   if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600');
   const chk = sel.on ? `<span class="text-lg leading-none">${sel.ids.has(p.id) ? '☑' : '☐'}</span>` : '';
-  const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide flex-1 ${mo ? 'truncate' : 'break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}`;
+  const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide ${mo ? 'flex-none' : 'flex-1 break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}${mo ? '<span class="flex-1"></span>' : ''}`;
   const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-200 border-red-400 bad-row' : 'bg-white border-gray-200'}${sel.ids.has(p.id) ? ' ring-2 ring-blue-500' : ''}" ${flashStyle(p)}`;
   return mo ? `<div ${at}><div class="flex items-center gap-1">${num}${b}</div></div>`
     : `<div ${at}><div class="flex items-center gap-1.5 mb-0.5">${num}</div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
@@ -513,7 +514,14 @@ function reportOf(sh, arr, info) {
   if (g.size > 1) blocks.push(statOf(arr, { diameter: 'Итого', wall: '', grade: '' }).replace(/^Итого x\s*/, 'Итого за смену\n'));
   return `КНК за смену ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} ${sh.shift_type === 'D' ? '(день)' : '(ночь)'}:\n` + blocks.join('\n\n');
 }
-const reportText = () => reportOf(view, pipes, p => sortOf(p.sort_id));
+const mpdBad = v => v === H || v === V || v === 'ЗАК';
+function mpdReport() {            // отчёт для МПД: «Прошло» = отмечены оба конца
+  const f = x => String(x == null ? '' : x).replace('.', ','), done = pipes.filter(p => p.mpd1_val !== '-' && p.mpd2_val !== '-').length, g = new Map();
+  pipes.forEach(p => { if (!g.has(p.sort_id)) g.set(p.sort_id, []); g.get(p.sort_id).push(p); });
+  const blocks = [...g.entries()].map(([sid, arr]) => { const s = sortOf(sid) || {}; return `${f(s.diameter)}*${f(s.wall)} ${s.grade || ''}`.trim() + `\nОтсорт МПД1 ${arr.filter(p => mpdBad(p.mpd1_val)).length}\nОтсорт МПД2 ${arr.filter(p => mpdBad(p.mpd2_val)).length}`; });
+  return `За смену ${sDate(view)} ${view.shift_type === 'D' ? 'день' : 'ночь'}\nПрошло ${done} труб` + (blocks.length ? '\n' + blocks.join('\n\n') : '');
+}
+const reportText = () => role() === 'mpd' ? mpdReport() : reportOf(view, pipes, p => sortOf(p.sort_id));
 function rStat() {
   $('v-stat').innerHTML = shiftBar() + (pipes.length ? `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-base" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться', 'bg-blue-600 text-white') + mb('copy', 'Копировать', 'bg-gray-300 text-gray-800') : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>');
 }
@@ -723,6 +731,7 @@ async function gamesLoad() {
 }
 function inviteModal(g) { modal('<h3 class="font-bold text-center text-lg">🎮 ' + esc(g.p1name) + ' зовёт сыграть</h3><p class="text-center">' + GN[g.kind] + '</p>' + mb('gacc', 'Принять', 'bg-emerald-600 text-white', `data-id="${g.id}"`) + mb('gdec', 'Отказаться', 'text-gray-500', `data-id="${g.id}"`)); }
 function gameEvt(p) {
+  if (role() === 'mpd') return;
   const g = p.new && p.new.id ? p.new : null; if (!g || (g.p1 !== ses.uid && g.p2 !== ses.uid)) return;
   const i = games.findIndex(x => x.id === g.id), old = i >= 0 ? games[i] : null; if (i >= 0) games[i] = g; else games.unshift(g);
   if (g.status === 'invite' && g.p2 === ses.uid && !old) { buzz([200, 100, 200]); inviteModal(g); }
@@ -758,7 +767,7 @@ function rGames() {
     }
     v.innerHTML = mb('gback', '‹ К списку игр', 'bg-gray-300 text-gray-800 !py-2 !text-base') + `<div class="font-bold px-1">${GN[g.kind]} · ${esc(opp)}</div>` + body; return;
   }
-  const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(u => u && u.uid !== ses.uid && u.uid !== ADMIN_UID);
+  const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(u => u && u.uid !== ses.uid && u.uid !== ADMIN_UID && u.role !== 'mpd');
   v.innerHTML = card('Позвать играть', ps.map(u => `<div class="flex items-center gap-2 py-1 border-b"><span class="flex-1">${esc(u.avatar)} <b>${esc(u.name)}</b></span><button data-act="gpick" data-u="${u.uid}" data-n="${esc(u.name)}" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">🎮 Позвать</button></div>`).join('') || '<p class="text-sm text-gray-500">Сейчас больше никого нет онлайн</p>') +
     card('Ваши игры (24 часа)', games.map(g => `<button data-act="gopen" data-id="${g.id}" class="w-full text-left py-2 border-b"><b>${GN[g.kind]}</b> · ${esc(g.p1 === ses.uid ? g.p2name : g.p1name)}<div class="text-xs text-gray-500">${gStatus(g)}</div></button>`).join('') || '<p class="text-sm text-gray-500">Пока нет игр</p>');
 }
