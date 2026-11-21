@@ -29,14 +29,21 @@
   body.dark .text-slate-800, body.dark .text-slate-700, body.dark .text-gray-800, body.dark .text-gray-700 { color: #e2e8f0; }
   body.dark .text-slate-600, body.dark .text-slate-500, body.dark .text-gray-600, body.dark .text-gray-500, body.dark .text-slate-400, body.dark .text-gray-400 { color: #94a3b8; }
   body.dark .text-red-800 { color: #fecaca; }
+  body.dark .bg-red-50 { background: #3a1217; } body.dark .border-red-200 { border-color: #7f1d1d; } body.dark .text-red-600 { color: #fca5a5; }
   body.dark input, body.dark textarea, body.dark select { background: #0b1220; color: #e2e8f0; }
   body.dark * { border-color: #475569; }
   @keyframes alertflash { 0%,100% { background: rgba(185,28,28,.96); } 50% { background: rgba(239,68,68,.96); } } #alert { animation: alertflash 1s infinite; }
-  body.kb #nav { display: none !important; } body.kb #chat-form { bottom: 0 !important; }
+  body .bg-blue-600 { background-color: var(--ac, #2563eb); }
+  body.dark .bg-sky-100 { background: #0c4a6e; } body.dark .text-sky-700 { color: #7dd3fc; } body.dark .bg-sky-200 { background: #075985; }
+  body.dark .bg-purple-100 { background: #3b0764; } body.dark .text-purple-700 { color: #d8b4fe; }
+  body.wp #chat-wrap { background: transparent; }
+  body.kb #nav { display: none !important; } #chat-wrap { position: fixed; left: 0; right: 0; top: var(--hh, 52px); bottom: var(--nh, 58px); display: flex; flex-direction: column; z-index: 5; }
+  #chat-msgs { flex: 1; overflow-y: auto; width: 100%; max-width: 28rem; margin: 0 auto; }
+  body.kb #chat-wrap { bottom: 0; }
 </style>
 </head>
 <body class="bg-gray-100 font-sans min-h-screen">
-<header class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md flex justify-between items-center gap-2">
+<header id="hdrbar" class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md flex justify-between items-center gap-2">
   <h1 class="font-bold text-base truncate" id="hdr">Цех МПД / УЗК</h1>
   <div class="flex items-center gap-2 shrink-0">
     <button id="theme" data-act="theme" class="text-base px-2 py-1 bg-slate-600 rounded">🌓</button>
@@ -47,8 +54,8 @@
 <div id="err-box" style="display:none" class="m-3 p-3 bg-red-100 text-red-800 text-sm rounded break-all"></div>
 <section id="start" class="hidden p-3 max-w-md mx-auto space-y-3"></section>
 <main id="app" class="hidden p-2 max-w-md mx-auto">
-  <div id="v-list" class="space-y-2"></div><div id="v-sort" class="hidden space-y-3"></div>
-  <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div>
+  <div id="v-list" class="space-y-1.5"></div><div id="v-sort" class="hidden space-y-3"></div>
+  <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div><div id="v-games" class="hidden space-y-3"></div><div id="v-cal" class="hidden space-y-3"></div>
 </main>
 <nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white flex overflow-x-auto text-[11px] text-center" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
 <div id="modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3"></div>
@@ -103,7 +110,7 @@ const THN = { auto: '🌓', day: '☀️', night: '🌙' };
 function applyTheme() {
   const night = theme === 'night' || (theme === 'auto' && curKey().type === 'N');
   document.body.classList.toggle('dark', night); $('theme').textContent = THN[theme];
-  document.querySelector('meta[name=theme-color]').content = night ? '#0b1220' : '#1e293b';
+  document.querySelector('meta[name=theme-color]').content = night ? '#0b1220' : '#1e293b'; applyLook();
 }
 const setTheme = t => { theme = t; localStorage.setItem('theme', t); applyTheme(); if (ses.uid && cur) render(true); };
 const saveS = () => localStorage.setItem('ses4', JSON.stringify(ses));
@@ -135,7 +142,7 @@ function startUI(step) {
     '<div class="grid grid-cols-3 gap-1 text-center font-semibold">' + Object.keys(ROLES).map(r => `<button data-act="role" data-r="${r}" class="py-3 rounded ${r === st.role ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">${ROLES[r]}</button>`).join('') + '</div>' +
     mb('login', 'Войти', 'bg-emerald-600 text-white') + mb('users', 'Назад', 'text-gray-500'));
   if (step === 'adm') h = card('Администратор', inp('ad-login', 'Логин', 'value="admin" autocapitalize="none" autocomplete="off"') + inp('ad-pass', 'Пароль', 'type="password"') + mb('admlogin', 'Войти', 'bg-emerald-600 text-white') + mb('admback', 'Назад', 'text-gray-500'));
-  $('start').innerHTML = h;
+  $('start').innerHTML = h; applyLook();
 }
 async function startWs() { const { data } = await db.rpc('ws_exists'); st.wsExists = !!data; startUI('ws'); }
 async function toUsers() { await loadUsers(); startUI(st.users.length ? 'users' : 'new'); }
@@ -171,7 +178,10 @@ function logout() { ses = { ws: true }; saveS(); stopRT(); closeM(); toUsers(); 
 async function enter() {
   $('start').classList.add('hidden'); $('app').classList.remove('hidden'); $('nav').classList.remove('hidden'); $('online').classList.remove('hidden');
   $('hdr').textContent = `${ses.avatar} ${ses.name} · ${RN[ses.role]}`;
-  tab = 'list'; unread = 0; startRT(); await loadShift(); loadMsgs(); setTab(tab);
+  tab = 'list'; unread = 0; startRT();
+  try { const sn = JSON.parse(localStorage.getItem('snap') || 'null'), ms = JSON.parse(localStorage.getItem('msnap') || '[]');
+    if (sn && sn.view && live(sn.view.shift_date, sn.view.shift_type)) { cur = sn.cur; view = sn.view; grace = sn.grace; pipes = sn.pipes; sorts = sn.sorts; msgs = ms; setTab(tab); } } catch (e) {}   // мгновенный показ из кэша
+  await loadShift(); loadMsgs(); gamesLoad(); setTab(tab);
   clearInterval(tick); tick = setInterval(rollover, 30000);
   clearInterval(tick2); tick2 = setInterval(() => { if (ses.uid && view && !touching && !Object.keys(q).length && ['list', 'stat', 'sort'].includes(tab)) fetchAll(); }, 60000);
 }
@@ -199,10 +209,12 @@ async function fetchAll() {
   const er = a.error || b.error;
   if (er) { setStatus('Ошибка загрузки', 'bg-red-600'); return showErr((er.code || '') + ' ' + er.message); }
   showErr(''); sorts = a.data; pipes = b.data; render();
+  try { localStorage.setItem('snap', JSON.stringify({ cur, view, grace, pipes, sorts })); } catch (e) {}
 }
 async function loadMsgs() {
   const { data } = await db.from('messages').select('*').order('created_at', { ascending: false }).limit(100);
   msgs = (data || []).reverse(); if (tab === 'chat') rChat();
+  try { localStorage.setItem('msnap', JSON.stringify(msgs.slice(-40))); } catch (e) {}
 }
 function startRT() {
   stopRT();
@@ -227,7 +239,13 @@ function startRT() {
       if (msgs.some(m => m.id === p.new.id)) return; msgs.push(p.new);
       if (tab === 'chat') rChat(); else if (p.new.user_id !== ses.uid) { unread++; navUpd(); buzz(30); }
     })
-    .on('presence', { event: 'sync' }, () => { const n = Object.keys(ch.presenceState()).length; $('online').textContent = '👥 ' + n; })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, gameEvt)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'absences' }, p => {
+      const r = p.eventType === 'DELETE' ? p.old : p.new; cal.abs = cal.abs.filter(a => !(a.user_id === r.user_id && a.day === r.day));
+      if (p.eventType !== 'DELETE') cal.abs.push(p.new); if (tab === 'cal' && !paint) rCal(true);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'day_notes' }, () => { cal.fresh = false; if (tab === 'cal' && !paint) calLoad(); })
+    .on('presence', { event: 'sync' }, () => { const n = Object.keys(ch.presenceState()).length; $('online').textContent = '👥 ' + n; if (tab === 'games' && !openG) rGames(); })
     .subscribe(async s => {
       if (s === 'SUBSCRIBED') { setStatus('Онлайн', 'bg-emerald-600'); await ch.track({ uid: ses.uid, name: ses.name, avatar: ses.avatar, role: ses.role }); if (view) fetchAll(); }
       else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(s)) setStatus('Нет связи', 'bg-red-600');
@@ -261,7 +279,7 @@ function tabsDef() {
   if (uzkish()) t.push(['sort', '➕', 'Сортамент']);
   if (r !== 'mpd') t.push(['stat', '📊', 'Отчёт']);
   if (uzkish()) t.push(['arch', '🗄', 'Архив']);
-  t.push(['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
+  t.push(['cal', '🏖', 'Отпуска'], ['games', '🎮', 'Игры'], ['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
   if (r === 'admin') t.push(['admin', '🛡', 'Админ']);
   return t;
 }
@@ -270,14 +288,14 @@ function navUpd() {
 }
 function setTab(t) {
   tab = t; if (t === 'chat') unread = 0;
-  ['list', 'sort', 'stat', 'arch', 'chat', 'set', 'admin'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
-  navUpd(); render(true);
+  ['list', 'sort', 'stat', 'arch', 'cal', 'games', 'chat', 'set', 'admin'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
+  navUpd(); layoutVars(); applyLook(); if (t === 'games') gamesLoad(); render(true);
 }
 function render(force) {
   if (!view) return;
   if (touching && !force) { needR = true; return; }          // не перерисовываем список под пальцем
-  if ((tab === 'arch' || tab === 'chat') && !force) return;
-  ({ list: rList, sort: rSort, stat: rStat, arch: rArch, chat: rChat, set: rSet, admin: rAdmin })[tab]();
+  if (['arch', 'chat', 'cal', 'games'].includes(tab) && !force) return;
+  ({ list: rList, sort: rSort, stat: rStat, arch: rArch, chat: rChat, set: rSet, admin: rAdmin, cal: rCal, games: rGames })[tab]();
 }
 function shiftBar() {
   const b = (s, l) => `<button data-act="vs" data-id="${s.id}" class="flex-1 py-2 rounded text-sm ${view.id === s.id ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${l}</button>`;
@@ -289,17 +307,22 @@ const isOtk = () => role() === 'otk';
 const uLab = p => isOtk() ? (p.uzk_def === 'N' ? 'N' : RA) : p.uzk_def;
 const mnLab = p => p.uzk_minus == null ? 'N' : (isOtk() ? 'S-' : p.uzk_minus);
 const mLab = v => isOtk() ? (v === 'ЗАК' ? OBR : (v === H || v === V) ? RA : v) : v;
-function cell(p, c, label, val, cls, tm) {
-  return `<button data-id="${p.id}" data-c="${c}" class="flex-1 min-w-0 h-16 rounded-lg flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[10px] opacity-80 font-normal leading-tight">${label}</span><span class="font-black text-lg leading-tight">${esc(val)}</span><span class="text-[9px] opacity-80 leading-tight h-3">${tm || ''}</span></button>`;
+function cell(p, c, label, val, cls, fixed) {
+  return `<button data-id="${p.id}" data-c="${c}" class="${fixed ? 'w-20 flex-none' : 'flex-1 min-w-0'} h-8 rounded-md flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[9px] opacity-80 font-normal leading-none">${label}</span><span class="font-black text-[15px] leading-tight">${esc(val)}</span></button>`;
 }
+const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">повтор</span>' : p.kind === 'probe' ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
+  + (!mo && (p.plavka || p.party) ? `<span class="text-[10px] text-gray-500 truncate max-w-[40%]">${p.plavka ? 'пл.' + esc(p.plavka) : ''} ${p.party ? 'п.' + esc(p.party) : ''}</span>` : '');
 function rowHTML(p) {
+  const bad = p.uzk_def !== 'N' || p.uzk_minus != null, mo = role() === 'mpd';   // МПД: тип отсорта не показываем, строка просто подсвечена
   let b = '';
-  if (cols.uzk) b += cell(p, 'uzk', 'УЗК', uLab(p), p.uzk_def === 'N' ? MC.N : MC[RA], p.uzk_def !== 'N' ? hhmm(p.uzk_at) : '');
-  if (cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white', p.uzk_minus != null ? hhmm(p.uzk_at) : '');
-  if (cols.mpd) b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], hhmm(p['mpd' + n + '_at'])); }).join('');
+  if (!mo && cols.uzk) b += cell(p, 'uzk', 'УЗК', uLab(p), p.uzk_def === 'N' ? MC.N : MC[RA]);
+  if (!mo && cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white');
+  if (cols.mpd) b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], mo); }).join('');
   if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600');
-  return `<div data-row="${p.id}" class="bg-white p-2 rounded-xl shadow-sm border border-gray-200"><div class="flex items-center gap-2 mb-1"><span class="w-9 text-right font-bold text-slate-400">${p.seq}</span>
-      <span data-edit="${p.id}" class="font-black text-xl text-slate-800 tracking-wide flex-1 break-all">${esc(p.pipe_number)}</span></div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
+  const num = `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide flex-1 ${mo ? 'truncate' : 'break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}`;
+  const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}"`;
+  return mo ? `<div ${at}><div class="flex items-center gap-1">${num}${b}</div></div>`
+    : `<div ${at}><div class="flex items-center gap-1.5 mb-0.5">${num}</div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
 }
 function rList() {
   let last = null, h = shiftBar();
@@ -351,10 +374,22 @@ function minusModal(id) {
   modal('<h3 class="font-bold text-center text-lg">Минус · фактическая стенка</h3>' + `<input id="m-val" type="number" step="0.01" inputmode="decimal" value="${p.uzk_minus == null ? '' : p.uzk_minus}" class="w-full border-2 p-3 rounded-lg text-2xl font-bold text-center">` +
     mb('minsave', 'Сохранить', 'bg-amber-500 text-white', `data-id="${id}"`) + mb('minreset', 'N (сброс)', MC.N, `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
 }
+let curKind = '';
+const kindChips = cur => [['', 'Обычная'], ['rep', 'Повтор'], ['probe', 'Проба']].map(([k, n]) => `<button data-act="kind" data-k="${k}" class="flex-1 py-2 rounded-lg text-sm ${cur === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('');
 function editModal(id) {
-  const p = pipes.find(x => x.id === id); if (!p) return;
+  const p = pipes.find(x => x.id === id); if (!p) return; curKind = p.kind || ''; const s = sortOf(p.sort_id) || {};
   modal('<h3 class="font-bold text-center text-lg">Труба №' + p.seq + '</h3>' + `<input id="e-num" value="${esc(p.pipe_number)}" class="w-full border-2 p-3 rounded-lg text-xl font-bold uppercase">` +
-    mb('esave', 'Сохранить номер', 'bg-blue-600 text-white', `data-id="${id}"`) + mb('edel', 'Удалить трубу', 'bg-red-600 text-white', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
+    `<div id="kinds" class="flex gap-1">${kindChips(curKind)}</div>` + inp('e-pl', 'Плавка (по умолчанию: ' + (s.plavka || '—') + ')', `value="${esc(p.plavka || '')}"`) + inp('e-pa', 'Партия (по умолчанию: ' + (s.party || '—') + ')', `value="${esc(p.party || '')}"`) +
+    mb('esave', 'Сохранить', 'bg-blue-600 text-white', `data-id="${id}"`) + mb('insform', '➕ Вставить трубу после этой', 'bg-emerald-600 text-white', `data-id="${id}"`) + mb('edel', 'Удалить трубу', 'bg-red-100 text-red-700', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
+}
+function insModal(id) {
+  const p = pipes.find(x => x.id === id); if (!p) return; curKind = 'rep'; const s = sortOf(p.sort_id) || {};
+  modal('<h3 class="font-bold text-center text-lg">Вставить после №' + p.seq + ' (' + esc(p.pipe_number) + ')</h3>' +
+    `<p class="text-xs text-gray-500">Марка, диаметр и стенка как у этой трубы: ${esc(s.diameter)} x ${esc(s.wall)} ${esc(s.grade)}. Плавку и партию можно не заполнять.</p>` +
+    inp('i-num', 'Номер трубы (обязательно)', 'autocapitalize="characters"') + `<div id="kinds" class="flex gap-1">${kindChips(curKind)}</div>` +
+    inp('i-pl', 'Плавка (необязательно)', `value=""`) + inp('i-pa', 'Партия (необязательно)', `value=""`) +
+    mb('insgo', 'Вставить', 'bg-emerald-600 text-white', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
+  setTimeout(() => $('i-num').focus(), 50);
 }
 
 // ===== Сортамент (УЗК) =====
@@ -414,10 +449,10 @@ async function sortSave() {
 
 // ===== Отчёт =====
 function statOf(arr, s) {
-  let bad = 0, both = 0, minus = 0, curved = 0; const cat = {};
-  arr.forEach(p => { const l = p.uzk_def !== 'N', m = p.uzk_minus != null; if (p.curved) curved++; if (l || m) bad++; if (l && m) both++; else if (l) cat[p.uzk_def] = (cat[p.uzk_def] || 0) + 1; else if (m) minus++; });
+  let bad = 0, both = 0, minus = 0, curved = 0, rp = 0, pb = 0; const cat = {};
+  arr.forEach(p => { const l = p.uzk_def !== 'N', m = p.uzk_minus != null; if (p.curved) curved++; if (p.kind === 'rep') rp++; if (p.kind === 'probe') pb++; if (l || m) bad++; if (l && m) both++; else if (l) cat[p.uzk_def] = (cat[p.uzk_def] || 0) + 1; else if (m) minus++; });
   const n = arr.length, good = n - bad, parts = CATS.filter(k => cat[k]).map(k => k + ' ' + cat[k]); parts.push('S- ' + minus);
-  return [`${s.diameter} x ${s.wall} ${s.grade || ''}`.trim(), `Подано - ${n}`, `Отсортов - ${bad}`, `Годных - ${good} (${n ? Math.round(good / n * 100) : 0}%)`, parts.join(', '), `Совместных - ${both};`]
+  return [`${s.diameter} x ${s.wall} ${s.grade || ''}`.trim(), `Подано - ${n}${rp || pb ? ` (повторов ${rp}, проб ${pb})` : ''}`, `Отсортов - ${bad}`, `Годных - ${good} (${n ? Math.round(good / n * 100) : 0}%)`, parts.join(', '), `Совместных - ${both};`]
     .concat(cols.curve ? [`Кривых - ${curved};`] : []).join('\n');
 }
 function reportOf(sh, arr, info) {
@@ -474,25 +509,27 @@ function rArchDet(v) {
   const mr = (n, p) => `<div>МПД ${n}: <b>${esc(mLab(p['mpd' + n + '_val']))}</b> <span class="text-gray-500">— ${esc(p['mpd' + n + '_by'] || '—')} ${hhmm(p['mpd' + n + '_at'])}</span></div>`;
   v.innerHTML = `<div class="flex gap-2">${mb('aback', '‹ Назад', 'bg-gray-300 text-gray-800 !py-2 !text-base')}${mb('ashare', 'Отчёт', 'bg-blue-600 text-white !py-2 !text-base')}</div><div class="font-bold px-1">${sTitle(sh)}</div>
     <input id="a-q" placeholder="Поиск: номер трубы или имя" value="${esc(arch.q)}" class="w-full border-2 p-2 rounded-lg">` +
-    f.map(p => { const s = p.sortaments || {}; return `<div class="bg-white rounded-lg p-2 shadow-sm text-sm"><div class="flex justify-between"><b>${p.seq}. ${esc(p.pipe_number)}</b><span class="text-gray-500">${esc(s.plavka ? 'пл. ' + s.plavka : '')} ${esc(s.diameter || '')}x${esc(s.wall || '')}</span></div>
+    f.map(p => { const s = p.sortaments || {}; return `<div class="bg-white rounded-lg p-2 shadow-sm text-sm"><div class="flex justify-between"><b>${p.seq}. ${esc(p.pipe_number)}</b><span class="text-gray-500">${esc((p.plavka || s.plavka) ? 'пл. ' + (p.plavka || s.plavka) : '')}${p.party ? ' п.' + esc(p.party) : ''}${p.kind ? ' · ' + (p.kind === 'rep' ? 'повтор' : 'проба') : ''} ${esc(s.diameter || '')}x${esc(s.wall || '')}</span></div>
       <div>УЗК: <b>${esc(uLab(p))}</b>${p.uzk_minus != null ? ' · <b>' + esc(isOtk() ? 'S-' : 'S- ' + p.uzk_minus) + '</b>' : ''} <span class="text-gray-500">— ${esc(p.uzk_by || p.added_by || '—')} ${hhmm(p.uzk_at)}</span></div>${mr(1, p)}${mr(2, p)}</div>`; }).join('');
 }
 document.addEventListener('input', e => { if (e.target.id === 'a-q') { arch.q = e.target.value; const pos = e.target.selectionStart; rArchDet($('v-arch')); const n = $('a-q'); n.focus(); n.setSelectionRange(pos, pos); } });
 
 // ===== Чат =====
+function layoutVars() { const r = document.documentElement.style; r.setProperty('--hh', $('hdrbar').offsetHeight + 'px'); r.setProperty('--nh', $('nav').offsetHeight + 'px'); }
 function rChat() {
-  const v = $('v-chat');
-  if (!$('chat-in')) v.innerHTML = '<div id="chat-msgs" class="space-y-2 pb-28"></div><div id="chat-form" class="fixed inset-x-0 bg-gray-100 border-t p-2 z-20" style="bottom:58px"><div class="max-w-md mx-auto flex gap-2"><input id="chat-in" type="text" enterkeyhint="send" autocapitalize="sentences" autocomplete="off" maxlength="1000" placeholder="Сообщение" class="flex-1 min-w-0 border-2 p-3 rounded-lg text-base"><button data-act="send" class="px-4 bg-blue-600 text-white font-bold rounded-lg">➤</button></div></div>';
-  $('chat-msgs').innerHTML = msgs.map(m => { const me = m.user_id === ses.uid; return `<div class="flex ${me ? 'justify-end' : ''} gap-2"><div class="max-w-[80%] rounded-xl p-2 ${me ? 'bg-blue-100' : 'bg-white'} shadow-sm"><div class="text-xs text-gray-500">${esc(m.avatar || '')} <b>${esc(m.name)}</b> · ${hhmm(m.created_at)}</div><div class="whitespace-pre-wrap break-words">${esc(m.text)}</div></div></div>`; }).join('') || '<p class="text-center text-gray-400 py-8">Сообщений пока нет</p>';
-  window.scrollTo(0, document.body.scrollHeight);
+  const v = $('v-chat'); layoutVars();
+  if (!$('chat-in')) v.innerHTML = '<div id="chat-wrap" class="bg-gray-100"><div id="chat-msgs" class="space-y-2 p-2"></div><div id="chat-form" class="bg-gray-100 border-t p-2"><div class="max-w-md mx-auto flex gap-2"><input id="chat-in" type="text" enterkeyhint="send" autocapitalize="sentences" autocomplete="off" maxlength="1000" placeholder="Сообщение" class="flex-1 min-w-0 border-2 p-3 rounded-lg text-base"><button data-act="send" class="px-4 bg-blue-600 text-white font-bold rounded-lg">➤</button></div></div></div>';
+  const m = $('chat-msgs'), first = !m.dataset.init, near = m.scrollHeight - m.scrollTop - m.clientHeight < 140;
+  m.innerHTML = msgs.map(x => { const me = x.user_id === ses.uid; return `<div class="flex ${me ? 'justify-end' : ''} gap-2"><div class="max-w-[80%] rounded-xl p-2 ${me ? 'bg-blue-100' : 'bg-white'} shadow-sm"><div class="text-xs text-gray-500">${esc(x.avatar || '')} <b>${esc(x.name)}</b> · ${hhmm(x.created_at)}</div><div class="whitespace-pre-wrap break-words">${esc(x.text)}</div></div></div>`; }).join('') || '<p class="text-center text-gray-400 py-8">Сообщений пока нет</p>';
+  m.dataset.init = '1'; if (first || near) m.scrollTop = m.scrollHeight;
 }
 async function sendMsg() {
   const i = $('chat-in'), t = i.value.trim(); if (!t) return; i.value = '';
   const { error } = await db.from('messages').insert({ user_id: ses.uid, name: ses.name, avatar: ses.avatar, text: t });
-  if (error) { i.value = t; toast(error.message); }
+  if (error) { i.value = t; toast(error.message); } else if (BOT_RE.test(t)) setTimeout(() => botSay(t), 600);
   i.focus();
 }
-document.addEventListener('focusin', e => { if (e.target.id === 'chat-in') { document.body.classList.add('kb'); setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 300); } });
+document.addEventListener('focusin', e => { if (e.target.id === 'chat-in') { document.body.classList.add('kb'); setTimeout(() => { const m = $('chat-msgs'); if (m) m.scrollTop = m.scrollHeight; }, 300); } });
 document.addEventListener('focusout', e => { if (e.target.id === 'chat-in') document.body.classList.remove('kb'); });
 
 // ===== Опции =====
@@ -510,6 +547,7 @@ function rSet() {
     <label class="flex items-center gap-3 py-2"><input type="checkbox" data-alerts="1" ${alertsOn() ? 'checked' : ''} class="w-6 h-6"> Показывать баннер на 10 секунд</label>
     <p id="alert-status" class="text-xs text-gray-500">${alertStatusText()}</p>${mb('alerttest', 'Проверить баннер', 'bg-gray-300 text-gray-800 !text-base')}
     <p class="text-xs text-gray-500 mt-1">Неофициальный источник (alerts.in.ua), задержка до 1–2 минут. Не заменяет сирены и официальные каналы.</p></div>
+  ${lookHTML()}
   <div class="bg-white rounded-xl p-4 shadow-sm text-sm space-y-1"><div>${esc(ses.avatar)} <b>${esc(ses.name)}</b> · ${RN[ses.role]}${ses.pin ? ' · 🔒' : ''}</div></div>` +
     (adm ? '' : mb('pin', ses.pin ? 'Изменить / убрать пароль учётки' : 'Защитить учётку паролем', 'bg-gray-300 text-gray-800')) + mb('logout', adm ? 'Выйти' : 'Сменить пользователя / роль', 'bg-gray-300 text-gray-800') +
     (adm ? '' : mb('delme', 'Удалить мою учётную запись', 'bg-red-100 text-red-700'));
@@ -523,6 +561,197 @@ async function rAdmin() {
 }
 function pinModal() {
   modal('<h3 class="font-bold text-center text-lg">Пароль учётки</h3>' + (ses.pin ? inp('p-old', 'Текущий пароль', 'type="password"') : '') + inp('p-new', ses.pin ? 'Новый пароль (пусто — убрать)' : 'Новый пароль', 'type="password"') + mb('pinsave', 'Сохранить', 'bg-blue-600 text-white') + mb('close', 'Отмена', 'text-gray-500'));
+}
+
+// ===== Фото: сжатие на телефоне (экономит трафик и место) =====
+async function shrink(file, max, q) {
+  const bmp = await createImageBitmap(file), k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', q));
+}
+const toDataUrl = blob => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); });
+
+// ===== Оформление: цвет и обои (рисуются на телефоне, трафика не расходуют) =====
+const svgUrl = s => 'url("data:image/svg+xml,' + encodeURIComponent(s) + '")';
+const WPS = {
+  pipes: "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><g fill='none' stroke='#64748b' stroke-opacity='.2' stroke-width='10'><circle cx='40' cy='40' r='24'/><circle cx='118' cy='108' r='30'/></g><g fill='none' stroke='#0ea5e9' stroke-opacity='.3' stroke-width='3' stroke-linecap='round'><path d='M70 22a34 34 0 0 1 28 28'/><path d='M74 10a50 50 0 0 1 42 42'/><path d='M20 100a30 30 0 0 0 26 26'/></g></svg>",
+  waves: "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='80'><g fill='none' stroke='#0ea5e9' stroke-opacity='.25' stroke-width='3' stroke-linecap='round'><path d='M0 20q20-20 40 0t40 0t40 0t40 0'/><path d='M0 50q20-20 40 0t40 0t40 0t40 0' stroke='#64748b' stroke-opacity='.2'/></g></svg>",
+  plate: "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke='#64748b' stroke-opacity='.18' stroke-width='2'><path d='M40 0L80 40L40 80L0 40Z'/><circle cx='40' cy='40' r='4'/></g></svg>"
+};
+const ACC = { blue: '#2563eb', emerald: '#059669', amber: '#d97706', violet: '#7c3aed', rose: '#e11d48' };
+let look = Object.assign({ acc: 'blue', wp: 'pipes' }, JSON.parse(localStorage.getItem('look') || '{}'));
+const saveLook = () => localStorage.setItem('look', JSON.stringify(look));
+function applyLook() {
+  const b = document.body; document.documentElement.style.setProperty('--ac', ACC[look.acc] || ACC.blue);
+  const calm = !ses.uid || ['chat', 'set', 'cal', 'games', 'admin'].includes(tab);   // обои только на «спокойных» экранах
+  let img = '';
+  if (calm && look.wp === 'photo') { const p = localStorage.getItem('wpimg'); if (p) { const o = b.classList.contains('dark') ? '11,18,32,.7' : '255,255,255,.62'; img = `linear-gradient(rgba(${o}),rgba(${o})),url("${p}")`; } }
+  else if (calm && WPS[look.wp]) img = svgUrl(WPS[look.wp]);
+  b.style.backgroundImage = img; b.style.backgroundAttachment = 'fixed'; b.style.backgroundPosition = 'center';
+  b.style.backgroundSize = look.wp === 'photo' ? 'cover' : look.wp === 'plate' ? '80px' : '160px'; b.classList.toggle('wp', !!img);
+}
+const lookHTML = () => `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-2">🎨 Оформление</h3><div class="flex gap-3 mb-2">${Object.entries(ACC).map(([k, c]) => `<button data-act="acc" data-v="${k}" class="w-9 h-9 rounded-full ${look.acc === k ? 'ring-4 ring-offset-2 ring-gray-400' : ''}" style="background:${c}"></button>`).join('')}</div>
+  <div class="flex flex-wrap gap-1 text-sm">${[['none', 'Без обоев'], ['pipes', 'Трубы'], ['waves', 'Волны'], ['plate', 'Металл'], ['photo', 'Своё фото']].map(([k, n]) => `<button data-act="wp" data-v="${k}" class="px-3 py-2 rounded-lg ${look.wp === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('')}</div>
+  <label class="block mt-2 text-sm text-center py-2 bg-gray-200 rounded-lg cursor-pointer">📷 Выбрать фото для обоев<input id="wp-file" type="file" accept="image/*" class="hidden"></label>
+  <p class="text-xs text-gray-500 mt-1">Обои показываются на «спокойных» экранах: вход, чат, отпуска, игры, опции. Фото хранится только на этом телефоне.</p></div>`;
+document.addEventListener('change', async e => {
+  if (e.target.id === 'wp-file' && e.target.files[0]) {
+    try { localStorage.setItem('wpimg', await toDataUrl(await shrink(e.target.files[0], 1000, .6))); look.wp = 'photo'; saveLook(); applyLook(); rSet(); } catch (er) { toast('Не удалось сохранить фото'); }
+  }
+  if (e.target.id === 'n-file') { cal.file = e.target.files[0] || null; $('n-file-l').textContent = cal.file ? '📷 ✓ выбрано' : '📷 Фото'; }
+});
+
+// ===== Бот «Трубоша» (без ИИ-сервиса: правила + юмор, работает бесплатно и мгновенно) =====
+const BOT_UID = '00000000-0000-0000-0000-000000000002', BOT_RE = /(^\s*@?(бот|трубоша)(?=[\s,:!.?\-]|$))|(@(бот|трубоша))/i;
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const JOKES = ['Труба без дефектов — как смена без звонков от начальства: красиво, но редко 😄', 'УЗК слышит дефекты, МПД их видит, а ОТК всегда знает, что «это не мы» 🕵️',
+  'Закалочная трещина — это когда труба сказала «я так не договаривалась» и разошлась по швам 💥', 'Если оператор написал «годная», значит у него хороший день. Или кофе ☕',
+  'Самый точный прибор в цеху — тот, что показывает, сколько осталось до конца смены ⏳', 'Повтор — это когда труба вернулась на второй круг, потому что не поверила результату 🔁',
+  'Минус по стенке — единственный минус, после которого все сразу начинают смотреть на тебя 📏', 'Дефектоскопист не пессимист. Он просто знает, где у вас слабое место 🔍'];
+function botReply(raw) {
+  const t = raw.toLowerCase().replace(/^\s*@?(бот|трубоша)[\s,:!.\-]*/, '').replace(/@(бот|трубоша)/g, ''), has = (...w) => w.some(x => t.includes(x));
+  if (!t.trim() || has('привет', 'здравств', 'хай', 'добр')) return pick(['Привет! Я Трубоша 🤖 — про трубы, смены и немного сарказма. Напиши «помощь» 🔧', 'На связи Трубоша! Дефектов не вижу, но это пока 😏 Спроси «помощь»']);
+  if (has('помощ', 'умеешь', 'команд', 'help')) return 'Умею: «смена» 👷, «статистика» 📊, «тревога» 🚨, «онлайн» 👥, «время» ⏰, «анекдот» 😄 и объясняю термины: УЗК, МПД, ЗАК, минус, ОТК, повтор/проба 🔧 Остальное — к начальству 😉';
+  if (has('смен', 'бригад', 'кто работ')) {
+    const k = curKey(); let d = k.date, ty = k.type; const ls = [];
+    for (let i = 0; i < 4; i++) { ls.push(`${ty === 'D' ? '☀️' : '🌙'} ${letter(d, ty)}`); if (ty === 'D') ty = 'N'; else { ty = 'D'; d = addDays(d, 1); } }
+    return `Сейчас ${k.type === 'D' ? 'день' : 'ночь'}: работает смена ${ls[0].slice(3)} 👷 Дальше: ${ls.slice(1).join(' → ')} 🗓️`;
+  }
+  if (has('статист', 'подано', 'сколько', 'брак', 'годн')) {
+    if (!pipes.length) return 'В списке пока пусто — работы нет, можно выдохнуть ☕';
+    const n = pipes.length, bad = pipes.filter(p => p.uzk_def !== 'N' || p.uzk_minus != null).length, pc = Math.round((n - bad) / n * 100);
+    return `Подано ${n}, отсорт ${bad}, годных ${n - bad} (${pc}%) 📊 ${pc >= 90 ? 'Красота, ОТК аплодирует 👏' : pc >= 75 ? 'Нормально, но можно лучше 🤔' : 'Ого, трубы сегодня с характером 😬'}`;
+  }
+  if (has('тревог', 'сирен')) return !alertSt || alertSt.missing ? 'Модуль тревог не подключён 🤷' : alertSt.dnipro ? '🚨 В Дніпрі тревога! Не спорь с ботом — иди в укрытие.' : 'Сейчас тревоги не вижу ✅ Но я бот, а не сирена — доверяй официальным каналам 🙏';
+  if (has('онлайн', 'кто тут', 'кто здесь')) { const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(Boolean); return `Онлайн ${ps.length}: ${ps.map(u => u.avatar + ' ' + u.name).join(', ') || 'никого 🦗'}`; }
+  if (has('анекдот', 'шутк', 'пошути', 'юмор', 'смешн')) return pick(JOKES);
+  if (has('узк', 'ультразвук')) return 'УЗК — ультразвуковой контроль: «слушаем» трубу ультразвуком, ищем внутренние и наружные дефекты и меряем стенку 🔊';
+  if (has('мпд', 'магнит')) return 'МПД — магнитопорошковая дефектоскопия: магнитим трубу, и порошок собирается там, где поверхностная трещина 🧲';
+  if (has('зак', 'закал')) return 'Закалочные трещины появляются при термообработке из-за сильных напряжений в металле 🔥 У МПД это ЗАК, а ОТК видит их как ОБР.';
+  if (has('минус', 's-', 'стенк')) return 'Минус — когда фактическая стенка меньше допуска 📏 В приложении вводишь реальную толщину, в отчёте это S-.';
+  if (has('отк')) return 'ОТК — отдел технического контроля: следит, чтобы брак (Р/А, S-, ОБР) не ушёл дальше, и не любит сюрпризов 🕵️';
+  if (has('повтор', 'проб')) return 'Повтор и проба вставляются так: тап по номеру трубы (у УЗК) → «➕ Вставить трубу после этой». Нумерация дальше сдвигается 🔁';
+  if (has('врем', 'котор час', 'час')) return 'Сейчас ' + new Date(kNow()).toISOString().slice(11, 16) + ' по Киеву ⏰ Смена не резиновая, но и не бесконечная.';
+  if (has('спасибо', 'благодар')) return pick(['Обращайся! 🤝', 'Рад стараться 😎', 'Пиши, если что. Я всё равно никуда не денусь 🤖']);
+  return pick(['Хм, это выше моего ранга 🤷 Я про смены, статистику, тревогу, термины и анекдоты. Напиши «помощь».', 'Не понял, но звучит серьёзно 🧐 Попробуй «помощь».']);
+}
+async function botSay(q) { await db.from('messages').insert({ user_id: BOT_UID, name: 'Трубоша', avatar: '🤖', text: botReply(q) }); }
+
+// ===== Мини-игры на двоих =====
+const GN = { ttt: '❌⭕ Крестики-нолики', bs: '🚢 Морской бой' };
+const TL = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+let games = [], openG = null;
+const meP = g => g.p1 === ses.uid ? 1 : 2, myTurn = g => g.status === 'playing' && g.state.turn === meP(g), curGame = () => games.find(x => x.id === openG);
+function placeFleet() {
+  for (let tries = 0; tries < 300; tries++) {
+    const g = Array(100).fill(0); let ok = true;
+    [4, 3, 3, 2, 2, 2, 1, 1, 1, 1].forEach((len, id) => {
+      if (!ok) return; let placed = false;
+      for (let t = 0; t < 300 && !placed; t++) {
+        const hz = Math.random() < .5, r = Math.floor(Math.random() * 10), c = Math.floor(Math.random() * 10), cells = [];
+        for (let k = 0; k < len; k++) cells.push(hz ? [r, c + k] : [r + k, c]);
+        if (cells.some(([a, b]) => a > 9 || b > 9)) continue;
+        const free = cells.every(([a, b]) => { for (let da = -1; da <= 1; da++) for (let dc = -1; dc <= 1; dc++) { const x = a + da, y = b + dc; if (x >= 0 && x < 10 && y >= 0 && y < 10 && g[x * 10 + y]) return false; } return true; });
+        if (!free) continue; cells.forEach(([a, b]) => g[a * 10 + b] = id + 1); placed = true;
+      }
+      if (!placed) ok = false;
+    });
+    if (ok) return g;
+  }
+  return Array(100).fill(0);
+}
+async function gamesLoad() {
+  if (!ses.uid || !db) return; const since = new Date(Date.now() - 864e5).toISOString();
+  const { data } = await db.from('games').select('*').or(`p1.eq.${ses.uid},p2.eq.${ses.uid}`).gt('created_at', since).order('created_at', { ascending: false }).limit(20);
+  games = data || []; if (tab === 'games') rGames();
+}
+function inviteModal(g) { modal('<h3 class="font-bold text-center text-lg">🎮 ' + esc(g.p1name) + ' зовёт сыграть</h3><p class="text-center">' + GN[g.kind] + '</p>' + mb('gacc', 'Принять', 'bg-emerald-600 text-white', `data-id="${g.id}"`) + mb('gdec', 'Отказаться', 'text-gray-500', `data-id="${g.id}"`)); }
+function gameEvt(p) {
+  const g = p.new && p.new.id ? p.new : null; if (!g || (g.p1 !== ses.uid && g.p2 !== ses.uid)) return;
+  const i = games.findIndex(x => x.id === g.id), old = i >= 0 ? games[i] : null; if (i >= 0) games[i] = g; else games.unshift(g);
+  if (g.status === 'invite' && g.p2 === ses.uid && !old) { buzz([200, 100, 200]); inviteModal(g); }
+  else if (old && g.status === 'playing' && g.state.turn === meP(g) && old.state.turn !== g.state.turn && openG !== g.id) { toast('Ваш ход: ' + GN[g.kind] + ' с ' + (g.p1 === ses.uid ? g.p2name : g.p1name)); buzz(80); }
+  if (tab === 'games') rGames();
+}
+async function gCreate(kind, uid, name) {
+  const state = kind === 'ttt' ? { b: Array(9).fill(''), turn: 1 } : { s1: placeFleet(), s2: placeFleet(), h1: '0'.repeat(100), h2: '0'.repeat(100), turn: 1 };
+  const { data, error } = await db.from('games').insert({ kind, p1: ses.uid, p1name: ses.name, p2: uid, p2name: name, state }).select().single();
+  if (error) return toast(error.message); if (!games.some(x => x.id === data.id)) games.unshift(data); openG = data.id; rGames(); toast('Приглашение отправлено');
+}
+async function gMove(g, ns, status) {
+  const ov = g.ver; g.state = ns; if (status) g.status = status; rGames();
+  const { data, error } = await db.from('games').update({ state: ns, status: g.status, ver: ov + 1 }).eq('id', g.id).eq('ver', ov).select();
+  if (error || !data || !data.length) { toast('Не получилось — обновляю'); await gamesLoad(); } else g.ver = ov + 1;
+}
+function gStatus(g) {
+  const me = meP(g); if (g.status === 'invite') return g.p1 === ses.uid ? 'Ждём ответа…' : 'Вас зовут играть!'; if (g.status === 'declined') return 'Соперник отказался';
+  if (g.status === 'done') return g.state.w === 0 ? '🤝 Ничья' : g.state.w === me ? '🎉 Вы победили!' : '😬 Вы проиграли'; return myTurn(g) ? '⚡ Ваш ход' : '⏳ Ход соперника';
+}
+function rGames() {
+  const v = $('v-games'), g = curGame();
+  if (g) {
+    const opp = g.p1 === ses.uid ? g.p2name : g.p1name;
+    let body = '';
+    if (g.kind === 'ttt') body = `<div class="text-center font-semibold mb-2">${gStatus(g)} · вы: ${meP(g) === 1 ? '❌' : '⭕'}</div><div class="grid grid-cols-3 gap-2 max-w-xs mx-auto">${g.state.b.map((c, i) => `<button data-act="gcell" data-i="${i}" class="h-20 rounded-xl bg-white shadow text-4xl font-black">${c === 'X' ? '❌' : c === 'O' ? '⭕' : ''}</button>`).join('')}</div>`;
+    else {
+      const me = meP(g), st = g.state, mine = me === 1 ? st.s1 : st.s2, opps = me === 1 ? st.s2 : st.s1, mine_h = me === 1 ? st.h1 : st.h2, their_h = me === 1 ? st.h2 : st.h1;
+      const cOpp = i => { const sh = mine_h[i] === '1', ship = opps[i] > 0, sunk = ship && sh && opps.every((x, k) => x !== opps[i] || mine_h[k] === '1'); return `<button data-act="bshot" data-i="${i}" class="aspect-square text-[11px] ${sh ? (ship ? (sunk ? 'bg-red-800 text-white' : 'bg-red-500 text-white') : 'bg-sky-100 text-sky-700') : 'bg-sky-200'}">${sh ? (ship ? '✖' : '•') : ''}</button>`; };
+      const cMine = i => { const sh = their_h[i] === '1', ship = mine[i] > 0; return `<div class="aspect-square text-[11px] flex items-center justify-center ${ship ? (sh ? 'bg-red-500 text-white' : 'bg-slate-500') : 'bg-sky-100 text-sky-700'}">${sh ? (ship ? '✖' : '•') : ''}</div>`; };
+      const grid = f => `<div class="grid gap-px" style="grid-template-columns:repeat(10,1fr)">${Array.from({ length: 100 }, (_, i) => f(i)).join('')}</div>`;
+      body = `<div class="text-center font-semibold">${gStatus(g)}</div><div class="text-xs text-gray-500">Поле соперника: нажимайте по клеткам. Попали — стреляете ещё раз.</div>${grid(cOpp)}<div class="text-xs text-gray-500 mt-2">Ваше поле (расставлено случайно)</div>${grid(cMine)}`;
+    }
+    v.innerHTML = mb('gback', '‹ К списку игр', 'bg-gray-300 text-gray-800 !py-2 !text-base') + `<div class="font-bold px-1">${GN[g.kind]} · ${esc(opp)}</div>` + body; return;
+  }
+  const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(u => u && u.uid !== ses.uid && u.uid !== ADMIN_UID);
+  v.innerHTML = card('Позвать играть', ps.map(u => `<div class="flex items-center gap-2 py-1 border-b"><span class="flex-1">${esc(u.avatar)} <b>${esc(u.name)}</b></span><button data-act="gpick" data-u="${u.uid}" data-n="${esc(u.name)}" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">🎮 Позвать</button></div>`).join('') || '<p class="text-sm text-gray-500">Сейчас больше никого нет онлайн</p>') +
+    card('Ваши игры (24 часа)', games.map(g => `<button data-act="gopen" data-id="${g.id}" class="w-full text-left py-2 border-b"><b>${GN[g.kind]}</b> · ${esc(g.p1 === ses.uid ? g.p2name : g.p1name)}<div class="text-xs text-gray-500">${gStatus(g)}</div></button>`).join('') || '<p class="text-sm text-gray-500">Пока нет игр</p>');
+}
+
+// ===== Отпуска / донорские / больничные + заметки по дням =====
+const KC = { vac: 'bg-emerald-500', donor: 'bg-rose-500', sick: 'bg-amber-500' }, KN = { vac: '🏖 Отпуск', donor: '🩸 Донорский день', sick: '🤒 Больничный' };
+const MN = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+let cal = { m: null, abs: [], notes: {}, mode: 'view', kind: 'vac', fresh: false, file: null, day: null }, paint = null;
+const todayK = () => new Date(kNow()).toISOString().slice(0, 10);
+function calRange() { const [y, m] = cal.m.split('-').map(Number), last = new Date(Date.UTC(y, m, 0)).getUTCDate(); return { y, m, last, from: `${cal.m}-01`, to: `${cal.m}-${String(last).padStart(2, '0')}` }; }
+async function calLoad() {
+  if (!cal.m) cal.m = todayK().slice(0, 7); const r = calRange(); cal.fresh = true;
+  const [a, n] = await Promise.all([db.from('absences').select('*').gte('day', r.from).lte('day', r.to), db.from('day_notes').select('id,day').gte('day', r.from).lte('day', r.to)]);
+  cal.abs = a.data || []; cal.notes = {}; (n.data || []).forEach(x => cal.notes[x.day] = (cal.notes[x.day] || 0) + 1); if (tab === 'cal') rCal(true);
+}
+function rCal(noLoad) {
+  if (!cal.m) cal.m = todayK().slice(0, 7); if (!cal.fresh && !noLoad) calLoad();
+  const r = calRange(), pad = (new Date(Date.UTC(r.y, r.m - 1, 1)).getUTCDay() + 6) % 7, td = todayK(), draw = cal.mode === 'draw';
+  const chip = (act, v, txt, on, cls) => `<button data-act="${act}" data-v="${v}" class="px-3 py-2 rounded-lg text-sm ${on ? (cls || 'bg-blue-600') + ' text-white font-bold' : 'bg-gray-200'}">${txt}</button>`;
+  let cells = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(x => `<div class="text-center text-xs text-gray-500">${x}</div>`).join('') + '<div></div>'.repeat(pad);
+  for (let n = 1; n <= r.last; n++) {
+    const d = `${cal.m}-${String(n).padStart(2, '0')}`, mine = cal.abs.find(a => a.day === d && a.user_id === ses.uid), oth = cal.abs.filter(a => a.day === d && a.user_id !== ses.uid);
+    cells += `<div data-day="${d}" class="relative h-14 rounded-lg border text-center leading-tight ${mine ? KC[mine.kind] + ' text-white' : 'bg-white'} ${d === td ? 'ring-2 ring-blue-500' : ''}"><div class="font-bold text-xs">${n}</div><div class="text-[9px] opacity-80">☀${letter(d, 'D')} 🌙${letter(d, 'N')}</div><div class="text-[10px] leading-none">${oth.slice(0, 3).map(a => esc(a.avatar || '👤')).join('')}${oth.length > 3 ? '+' + (oth.length - 3) : ''}</div>${cal.notes[d] ? '<span class="absolute top-0 right-0.5 text-[9px]">💬</span>' : ''}</div>`;
+  }
+  $('v-cal').innerHTML = `<div class="flex items-center justify-between bg-white rounded-xl p-2 shadow-sm"><button data-act="cprev" class="px-4 py-2 text-xl">‹</button><b>${MN[r.m - 1]} ${r.y}</b><button data-act="cnext" class="px-4 py-2 text-xl">›</button></div>
+    <div class="flex gap-1">${chip('cmode', 'view', '👁 Смотреть', !draw)}${chip('cmode', 'draw', '✏️ Отмечать себя', draw)}</div>
+    ${draw ? `<div class="flex flex-wrap gap-1">${['vac', 'donor', 'sick'].map(k => chip('ckind', k, KN[k], cal.kind === k, KC[k])).join('')}${chip('ckind', 'erase', '🧽 Стереть', cal.kind === 'erase', 'bg-slate-600')}</div><p class="text-xs text-gray-500">Проведите пальцем по клеткам, чтобы закрасить свои дни.</p>` : '<p class="text-xs text-gray-500">Нажмите на день: кто отсутствует, комментарии и фото. ☀ — бригада днём, 🌙 — ночью. Эмодзи в клетке — коллеги в отпуске.</p>'}
+    <div id="cal-grid" class="grid grid-cols-7 gap-1" style="touch-action:${draw ? 'none' : 'pan-y'}">${cells}</div>`;
+}
+function paintAt(x, y) { const el = document.elementFromPoint(x, y), c = el && el.closest && el.closest('#cal-grid [data-day]'); if (c && !paint.days.has(c.dataset.day)) { paint.days.add(c.dataset.day); c.classList.add('ring-2', 'ring-blue-500'); buzz(8); } }
+document.addEventListener('pointerdown', e => { if (tab === 'cal' && cal.mode === 'draw' && e.target.closest && e.target.closest('#cal-grid')) { paint = { days: new Set() }; paintAt(e.clientX, e.clientY); } });
+document.addEventListener('pointermove', e => { if (paint) paintAt(e.clientX, e.clientY); });
+const endPaint = () => { if (!paint) return; const days = [...paint.days]; paint = null; if (days.length) calApply(days); };
+['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, endPaint));
+document.addEventListener('click', e => { const c = e.target.closest && e.target.closest('#cal-grid [data-day]'); if (c && cal.mode === 'view') calDay(c.dataset.day); });
+async function calApply(days) {
+  const k = cal.kind, me = ses.uid; cal.abs = cal.abs.filter(a => !(a.user_id === me && days.includes(a.day)));
+  if (k === 'erase') { rCal(true); const { error } = await db.from('absences').delete().eq('user_id', me).in('day', days); if (error) toast(error.message); return; }
+  const rows = days.map(day => ({ user_id: me, name: ses.name, avatar: ses.avatar, day, kind: k })); cal.abs.push(...rows); rCal(true);
+  const { error } = await db.from('absences').upsert(rows, { onConflict: 'user_id,day' }); if (error) { toast(error.message); calLoad(); }
+}
+async function calDay(d) {
+  const { data } = await db.from('day_notes').select('*').eq('day', d).order('created_at'), ab = cal.abs.filter(a => a.day === d), url = p => db.storage.from('daynotes').getPublicUrl(p).data.publicUrl;
+  cal.file = null; cal.day = d;
+  modal(`<h3 class="font-bold text-center text-lg">${fd(d)} · ☀️ ${letter(d, 'D')} 🌙 ${letter(d, 'N')}</h3>` +
+    (ab.length ? ab.map(a => `<div class="text-sm">${esc(a.avatar || '')} <b>${esc(a.name)}</b> — ${KN[a.kind]}</div>`).join('') : '<p class="text-sm text-gray-500">Никто не отмечен</p>') +
+    '<div class="border-t pt-2 space-y-2">' + ((data || []).map(n => `<div class="text-sm bg-gray-100 rounded-lg p-2"><div class="text-xs text-gray-500">${esc(n.avatar || '')} <b>${esc(n.name)}</b> · ${hhmm(n.created_at)}${n.user_id === ses.uid ? ` <button data-act="ndel" data-id="${n.id}" data-p="${esc(n.photo || '')}" class="text-red-600">удалить</button>` : ''}</div>${n.text ? `<div class="whitespace-pre-wrap break-words">${esc(n.text)}</div>` : ''}${n.photo ? `<a href="${url(n.photo)}" target="_blank"><img src="${url(n.photo)}" loading="lazy" class="mt-1 rounded-lg max-h-48"></a>` : ''}</div>`).join('') || '<p class="text-xs text-gray-400">Комментариев нет</p>') + '</div>' +
+    `<textarea id="n-text" rows="2" maxlength="500" placeholder="Комментарий" class="w-full border-2 p-2 rounded-lg"></textarea><div class="flex gap-2"><label class="flex-1 py-3 text-center bg-gray-200 rounded-xl font-bold cursor-pointer"><span id="n-file-l">📷 Фото</span><input id="n-file" type="file" accept="image/*" class="hidden"></label>${mb('nsend', 'Отправить', 'bg-blue-600 text-white !text-base').replace('w-full', 'flex-1')}</div>` + mb('close', 'Закрыть', 'text-gray-500'));
 }
 
 // ===== Воздушная тревога (Дніпро) =====
@@ -552,6 +781,44 @@ document.addEventListener('click', async e => {
   switch (d.act) {
     case 'ws': { const { data, error } = await db.rpc('ws_join', { p_pass: $('w-pass').value }); if (error) return toast(error.message); if (data === 'none') return startWs(); if (data === 'wrong') return toast('Неверный пароль цеха'); ses = { ws: true }; saveS(); return toUsers(); }
     case 'users': return toUsers();
+    case 'kind': curKind = d.k; $('kinds').innerHTML = kindChips(curKind); return;
+    case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (pipes.some(x => x.id !== d.id && x.pipe_number === v)) return toast('Такой номер уже есть'); patch(d.id, { pipe_number: v, kind: curKind || null, plavka: $('e-pl').value.trim() || null, party: $('e-pa').value.trim() || null }); return closeM(); }
+    case 'insform': return insModal(d.id);
+    case 'insgo': {
+      const p = pipes.find(x => x.id === d.id), num = $('i-num').value.trim(); if (!p || !num) return toast('Введите номер трубы');
+      const { error } = await db.rpc('insert_pipe', { p_shift: view.id, p_sort: p.sort_id, p_after: p.seq, p_number: num, p_plavka: $('i-pl').value, p_party: $('i-pa').value, p_kind: curKind, p_by: ses.name });
+      if (error) return toast(/duplicate|unique/i.test(error.message) ? 'Такой номер уже есть в смене' : error.message);
+      closeM(); toast('Труба вставлена, нумерация сдвинута'); return fetchAll();
+    }
+    case 'acc': look.acc = d.v; saveLook(); applyLook(); return rSet();
+    case 'wp': if (d.v === 'photo' && !localStorage.getItem('wpimg')) return toast('Сначала выберите фото кнопкой ниже'); look.wp = d.v; saveLook(); applyLook(); return rSet();
+    case 'gpick': return modal('<h3 class="font-bold text-center text-lg">Во что играем с ' + esc(d.n) + '?</h3>' + mb('gsend', GN.ttt, 'bg-blue-600 text-white', `data-k="ttt" data-u="${d.u}" data-n="${esc(d.n)}"`) + mb('gsend', GN.bs, 'bg-blue-600 text-white', `data-k="bs" data-u="${d.u}" data-n="${esc(d.n)}"`) + mb('close', 'Отмена', 'text-gray-500'));
+    case 'gsend': closeM(); return gCreate(d.k, d.u, d.n);
+    case 'gopen': openG = d.id; return rGames();
+    case 'gback': openG = null; return rGames();
+    case 'gacc': { const g = games.find(x => x.id === d.id); closeM(); if (!g) return; const { data } = await db.from('games').update({ status: 'playing', ver: g.ver + 1 }).eq('id', g.id).eq('ver', g.ver).select(); if (data && data[0]) Object.assign(g, data[0]); openG = g.id; setTab('games'); return; }
+    case 'gdec': { const g = games.find(x => x.id === d.id); closeM(); if (g) await db.from('games').update({ status: 'declined', ver: g.ver + 1 }).eq('id', g.id); return; }
+    case 'gcell': {
+      const g = curGame(); if (!g || !myTurn(g)) return; const i = +d.i, b = g.state.b.slice(); if (b[i]) return; const me = meP(g); b[i] = me === 1 ? 'X' : 'O';
+      const win = TL.some(l => l.every(k => b[k] === b[i])), full = b.every(Boolean); return gMove(g, { b, turn: me === 1 ? 2 : 1, w: win ? me : full ? 0 : undefined }, win || full ? 'done' : undefined);
+    }
+    case 'bshot': {
+      const g = curGame(); if (!g || !myTurn(g)) return; const me = meP(g), st = g.state, opp = me === 1 ? st.s2 : st.s1, key = me === 1 ? 'h1' : 'h2', i = +d.i; if (st[key][i] === '1') return;
+      const nsh = st[key].slice(0, i) + '1' + st[key].slice(i + 1), hit = opp[i] > 0, ns = Object.assign({}, st, { [key]: nsh });
+      if (hit && opp.every((x, k) => x === 0 || nsh[k] === '1')) { ns.w = me; return gMove(g, ns, 'done'); }
+      if (hit) { if (opp.every((x, k) => x !== opp[i] || nsh[k] === '1')) toast('Потопил! 🚢💥'); } else ns.turn = me === 1 ? 2 : 1;
+      return gMove(g, ns);
+    }
+    case 'cmode': cal.mode = d.v; return rCal(true);
+    case 'ckind': cal.kind = d.v; return rCal(true);
+    case 'cprev': case 'cnext': { const [y, m] = cal.m.split('-').map(Number), n = new Date(Date.UTC(y, m - 1 + (d.act === 'cnext' ? 1 : -1), 1)); cal.m = n.toISOString().slice(0, 7); cal.fresh = false; return rCal(); }
+    case 'nsend': {
+      const text = $('n-text').value.trim(); if (!text && !cal.file) return; let photo = null;
+      if (cal.file) { try { const blob = await shrink(cal.file, 1000, .72), path = `${cal.day}/${crypto.randomUUID()}.jpg`; const { error } = await db.storage.from('daynotes').upload(path, blob, { contentType: 'image/jpeg' }); if (error) return toast('Фото не загрузилось: ' + error.message); photo = path; } catch (er) { return toast('Не удалось обработать фото'); } }
+      const { error } = await db.from('day_notes').insert({ day: cal.day, user_id: ses.uid, name: ses.name, avatar: ses.avatar, text, photo }); if (error) return toast(error.message);
+      cal.notes[cal.day] = (cal.notes[cal.day] || 0) + 1; rCal(true); return calDay(cal.day);
+    }
+    case 'ndel': { await db.from('day_notes').delete().eq('id', d.id); if (d.p) db.storage.from('daynotes').remove([d.p]); cal.notes[cal.day] = Math.max(0, (cal.notes[cal.day] || 1) - 1); rCal(true); return calDay(cal.day); }
     case 'admform': return startUI('adm');
     case 'admback': return ses.ws ? toUsers() : startWs();
     case 'admlogin': return doAdminLogin();
@@ -587,7 +854,6 @@ document.addEventListener('click', async e => {
     case 'uzkset': setUzk(d.id, { uzk_def: 'N' }); return closeM();
     case 'minsave': { const v = parseFloat($('m-val').value.replace(',', '.')); if (!(v > 0)) return toast('Введите толщину числом'); setUzk(d.id, { uzk_minus: v }); return closeM(); }
     case 'minreset': setUzk(d.id, { uzk_minus: null }); return closeM();
-    case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (pipes.some(x => x.id !== d.id && x.pipe_number === v)) return toast('Такой номер уже есть'); patch(d.id, { pipe_number: v }); return closeM(); }
     case 'edel': { if (!confirm('Удалить трубу?')) return; closeM(); const { error } = await db.from('pipes').delete().eq('id', d.id); if (error) return toast(error.message); pipes = pipes.filter(x => x.id !== d.id); return render(); }
     case 'sortform': return sortForm(d.next);
     case 'sortsave': return sortSave();
@@ -616,6 +882,7 @@ function init() {
   db = window.supabase.createClient(c.url, c.key);
   setStatus('Готово', 'bg-emerald-600');
   alertInit();
+  window.addEventListener('resize', layoutVars);
   window.addEventListener('pagehide', flushAll); document.addEventListener('visibilitychange', () => { if (document.hidden) flushAll(); });
   if (ses.uid) enter(); else if (ses.ws) toUsers(); else startWs();
   document.addEventListener('visibilitychange', () => { if (!document.hidden && ses.uid && cur) { rollover(); fetchAll(); loadMsgs(); } });
