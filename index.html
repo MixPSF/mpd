@@ -33,6 +33,8 @@
   body.dark input, body.dark textarea, body.dark select { background: #0b1220; color: #e2e8f0; }
   body.dark * { border-color: #475569; }
   @keyframes alertflash { 0%,100% { background: rgba(185,28,28,.96); } 50% { background: rgba(239,68,68,.96); } } #alert { animation: alertflash 1s infinite; }
+  @keyframes flashok { from { background-color: #4ade80; border-color: #16a34a; } }
+  @keyframes flashbad { from { background-color: #f87171; border-color: #dc2626; } }
   body .bg-blue-600 { background-color: var(--ac, #2563eb); }
   body.dark .bg-sky-100 { background: #0c4a6e; } body.dark .text-sky-700 { color: #7dd3fc; } body.dark .bg-sky-200 { background: #075985; }
   body.dark .bg-purple-100 { background: #3b0764; } body.dark .text-purple-700 { color: #d8b4fe; }
@@ -58,6 +60,7 @@
   <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div><div id="v-games" class="hidden space-y-3"></div><div id="v-cal" class="hidden space-y-3"></div>
 </main>
 <nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white flex overflow-x-auto text-[11px] text-center" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
+<div id="selbar" class="hidden fixed inset-x-0 z-30 bg-slate-800 text-white p-2 flex items-center gap-2 text-sm" style="bottom:var(--nh,58px)"></div>
 <div id="modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3"></div>
 <div id="toast" class="hidden fixed bottom-20 inset-x-4 z-50 bg-slate-900 text-white text-sm p-3 rounded-lg text-center"></div>
 <div id="alert" class="hidden fixed inset-0 z-[100] flex flex-col items-center justify-center text-center text-white p-6">
@@ -102,6 +105,9 @@ const sTitle = s => (s.shift_type === 'D' ? '☀️ День' : '🌙 Ночь')
 // ===== Состояние =====
 let db, ch, pipes = [], sorts = [], msgs = [], cur = null, view = null, grace = null, tab = 'list', unread = 0, tick = null;
 let fixTried = '', rfT = null;
+const sel = { on: false, ids: new Set(), last: null, range: false };      // режим выбора нескольких труб
+const flashes = {};                                                         // id -> {t, k}: подсветка «контроль окончен»
+const flashStyle = p => { const f = flashes[p.id]; if (!f) return ''; const el = (Date.now() - f.t) / 1000; if (el >= 5) { delete flashes[p.id]; return ''; } return `style="animation:${f.k} 5s ease-out ${-el}s"`; };
 const q = {}, lastEdit = {}; let touching = false, needR = false, tick2 = null, alertSt = null, alertTimer = null;
 let ses = JSON.parse(localStorage.getItem('ses4') || '{}');
 let cols = Object.assign({ uzk: 1, minus: 1, mpd: 1, curve: 0 }, JSON.parse(localStorage.getItem('cols') || '{}'));
@@ -231,8 +237,9 @@ function startRT() {
       if (p.eventType === 'DELETE') { pipes = pipes.filter(x => x.id !== p.old.id); return refetchSoon(); }
       if (p.new.shift_id !== view.id) return;
       const id = p.new.id, cur = pipes.find(x => x.id === id);
+      if (cur && uzkish() && cur.mpd2_val === '-' && p.new.mpd2_val !== '-') { flashes[id] = { t: Date.now(), k: (p.new.uzk_def !== 'N' || p.new.uzk_minus != null) ? 'flashbad' : 'flashok' }; buzz(25); }
       if (!cur || p.new.seq !== cur.dbseq) return refetchSoon();                          // вставка / удаление / смена порядка
-      if (q[id] || Date.now() - (lastEdit[id] || 0) < 2500) return;                       // эхо наших же правок не трогаем
+      if (q[id] || Date.now() - (lastEdit[id] || 0) < 2500) { ['mpd1_val', 'mpd1_by', 'mpd1_at', 'mpd2_val', 'mpd2_by', 'mpd2_at'].forEach(k => cur[k] = p.new[k]); updRow(id, true); return; }   // эхо наших правок не трогаем
       const keep = cur.seq; Object.assign(cur, p.new, { seq: keep }); updRow(id, true);
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sortaments' }, p => {
@@ -297,6 +304,7 @@ function navUpd() {
 function setTab(t) {
   tab = t; if (t === 'chat') unread = 0;
   ['list', 'sort', 'stat', 'arch', 'cal', 'games', 'chat', 'set', 'admin'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
+  sel.on = false; sel.ids.clear(); selBar();
   navUpd(); layoutVars(); applyLook(); if (t === 'games') gamesLoad(); render(true);
 }
 function render(force) {
@@ -320,6 +328,16 @@ function cell(p, c, label, val, cls, fixed) {
 }
 const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">повтор</span>' : p.kind === 'probe' ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
   + (!mo && (p.plavka || p.party) ? `<span class="text-[10px] text-gray-500 truncate max-w-[40%]">${p.plavka ? 'пл.' + esc(p.plavka) : ''} ${p.party ? 'п.' + esc(p.party) : ''}</span>` : '');
+function selBar() {
+  const b = $('selbar'); if (!sel.on) { b.classList.add('hidden'); return; } b.classList.remove('hidden');
+  b.innerHTML = `<span class="font-bold">Выбрано ${sel.ids.size}</span><button data-act="selrange" class="px-2 py-1 rounded ${sel.range ? 'bg-blue-600' : 'bg-slate-600'}">Диапазон</button><button data-act="selbelow" class="px-2 py-1 rounded bg-slate-600">Все ниже</button><span class="flex-1"></span><button data-act="seldel" class="px-3 py-2 rounded-lg bg-red-600 font-bold">🗑 Удалить</button><button data-act="selcancel" class="px-2 py-2">✕</button>`;
+}
+function selToggle(id) {
+  const i = pipes.findIndex(x => x.id === id), j = sel.last ? pipes.findIndex(x => x.id === sel.last) : -1;
+  if (sel.range && j >= 0) { const [a, b] = i < j ? [i, j] : [j, i]; for (let k = a; k <= b; k++) sel.ids.add(pipes[k].id); }
+  else if (sel.ids.has(id)) sel.ids.delete(id); else sel.ids.add(id);
+  sel.last = id; selBar(); rList();
+}
 function rowHTML(p) {
   const bad = p.uzk_def !== 'N' || p.uzk_minus != null, mo = role() === 'mpd';   // МПД: тип отсорта не показываем, строка просто подсвечена
   let b = '';
@@ -327,13 +345,14 @@ function rowHTML(p) {
   if (!mo && cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white');
   if (cols.mpd) b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], mo); }).join('');
   if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600');
-  const num = `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide flex-1 ${mo ? 'truncate' : 'break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}`;
-  const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}"`;
+  const chk = sel.on ? `<span class="text-lg leading-none">${sel.ids.has(p.id) ? '☑' : '☐'}</span>` : '';
+  const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide flex-1 ${mo ? 'truncate' : 'break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}`;
+  const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}${sel.ids.has(p.id) ? ' ring-2 ring-blue-500' : ''}" ${flashStyle(p)}`;
   return mo ? `<div ${at}><div class="flex items-center gap-1">${num}${b}</div></div>`
     : `<div ${at}><div class="flex items-center gap-1.5 mb-0.5">${num}</div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
 }
 function rList() {
-  let last = null, h = shiftBar();
+  let last = null, h = shiftBar() + (uzkish() && !sel.on && pipes.length ? '<div class="flex justify-end"><button data-act="seltoggle" class="px-3 py-1 rounded-lg bg-gray-200 text-sm">☑ Выбрать несколько</button></div>' : '');
   if (!pipes.length) h += '<p class="text-center text-gray-400 py-8">Список пуст' + (uzkish() ? '. Добавьте трубы во вкладке «Сортамент».' : '.') + '</p>';
   pipes.forEach(p => {
     if (p.sort_id !== last) {
@@ -342,6 +361,7 @@ function rList() {
     }
     h += rowHTML(p);
   });
+  if (uzkish() && pipes.length && !sel.on) h += '<button data-act="addend" class="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold">➕ Добавить трубы в конец списка</button>';
   $('v-list').innerHTML = h;
 }
 function updRow(id, rt) {                                     // перерисовать только одну строку
@@ -355,11 +375,12 @@ let pt = null, lf = false, tsafe = null; const lst = $('v-list');
 const endTouch = () => { clearTimeout(pt); clearTimeout(tsafe); setTimeout(() => { touching = false; if (needR) { needR = false; render(true); } }, 150); };
 lst.addEventListener('pointerdown', e => {
   touching = true; clearTimeout(tsafe); tsafe = setTimeout(endTouch, 4000);
-  const b = e.target.closest('button[data-id]'); if (!b) return; lf = false;
+  const b = e.target.closest('button[data-id]'); if (!b || sel.on) return; lf = false;
   pt = setTimeout(() => { lf = true; buzz(40); mpdModal(b.dataset.id, b.dataset.c); }, 600);
 });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => lst.addEventListener(ev, endTouch));
 lst.addEventListener('click', e => {
+  if (sel.on) { const r = e.target.closest('[data-row]'); if (r) selToggle(r.dataset.row); return; }
   const n = e.target.closest('[data-edit]'); if (n) { if (uzkish()) editModal(n.dataset.edit); return; }
   const b = e.target.closest('button[data-id]'); if (!b || lf) return;
   const { id, c } = b.dataset, p = pipes.find(x => x.id === id); if (!p || !can(c)) return; buzz(20);
@@ -390,13 +411,15 @@ function editModal(id) {
     `<div id="kinds" class="flex gap-1">${kindChips(curKind)}</div>` + inp('e-pl', 'Плавка (по умолчанию: ' + (s.plavka || '—') + ')', `value="${esc(p.plavka || '')}"`) + inp('e-pa', 'Партия (по умолчанию: ' + (s.party || '—') + ')', `value="${esc(p.party || '')}"`) +
     mb('esave', 'Сохранить', 'bg-blue-600 text-white', `data-id="${id}"`) + mb('insform', '➕ Вставить трубу после этой', 'bg-emerald-600 text-white', `data-id="${id}"`) + mb('edel', 'Удалить трубу', 'bg-red-100 text-red-700', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
 }
-function insModal(id) {
-  const p = pipes.find(x => x.id === id); if (!p) return; curKind = 'rep'; const s = sortOf(p.sort_id) || {};
-  modal('<h3 class="font-bold text-center text-lg">Вставить после №' + p.seq + ' (' + esc(p.pipe_number) + ')</h3>' +
-    `<p class="text-xs text-gray-500">Марка, диаметр и стенка как у этой трубы: ${esc(s.diameter)} x ${esc(s.wall)} ${esc(s.grade)}. Плавку и партию можно не заполнять.</p>` +
-    inp('i-num', 'Номер трубы (обязательно)', 'autocapitalize="characters"') + `<div id="kinds" class="flex gap-1">${kindChips(curKind)}</div>` +
-    inp('i-pl', 'Плавка (необязательно)', `value=""`) + inp('i-pa', 'Партия (необязательно)', `value=""`) +
-    mb('insgo', 'Вставить', 'bg-emerald-600 text-white', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
+function insModal(id, pre) {
+  const p = pipes.find(x => x.id === id); if (!p) return; pre = pre || {}; const s = sortOf(p.sort_id) || {};
+  curKind = pre.kind !== undefined ? pre.kind : (p.kind || 'rep');
+  const pl = pre.pl !== undefined ? pre.pl : (p.plavka || s.plavka || ''), pa = pre.pa !== undefined ? pre.pa : (p.party || s.party || '');
+  modal('<h3 class="font-bold text-center text-lg">' + (pre.msg ? esc(pre.msg) + '<br>' : '') + 'Вставить после №' + p.seq + ' (' + esc(p.pipe_number) + ')</h3>' +
+    '<p class="text-xs text-gray-500">Плавка и партия подставлены от этой трубы — измените, если они другие. Для типа «Повтор» можно вводить тот же номер, что уже есть в списке (41 → повтор 41 → ещё повтор 41). Несколько номеров: через пробел или диапазоном 5525-5528.</p>' +
+    inp('i-num', 'Номер(а) трубы (обязательно)', 'autocapitalize="characters"') + `<div id="kinds" class="flex gap-1">${kindChips(curKind)}</div>` +
+    inp('i-pl', 'Плавка', `value="${esc(pl)}"`) + inp('i-pa', 'Партия', `value="${esc(pa)}"`) +
+    mb('insgo', 'Вставить', 'bg-emerald-600 text-white', `data-id="${id}"`) + mb('close', 'Готово', 'text-gray-500'));
   setTimeout(() => $('i-num').focus(), 50);
 }
 
@@ -423,9 +446,11 @@ function rSort() {
   $('v-sort').innerHTML = h;
 }
 function sortForm(next) {
+  curKind = '';
   modal('<h3 class="font-bold text-center text-lg">Добавить трубы</h3>' +
     `<select id="f-sel" class="w-full border-2 p-3 rounded-lg"><option value="">➕ Новый сортамент</option>${sorts.map(s => `<option value="${s.id}">${esc(sLabel(s))}</option>`).join('')}</select>` +
     `<div id="f-new" class="space-y-2">${inp('f-p', 'Плавка')}${inp('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"')}${inp('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"')}${inp('f-g', 'Марка стали (N80Q)')}${inp('f-n', 'Номер партии')}</div>` +
+    `<div id="f-ex" class="space-y-2" style="display:none"><p class="text-xs text-gray-500">Плавка и партия подставлены от предыдущей трубы этого сортамента — измените, если они другие.</p><div id="kinds" class="flex gap-1">${kindChips('')}</div>${inp('f-xp', 'Плавка')}${inp('f-xa', 'Партия')}</div>` +
     '<label class="block text-xs text-gray-600">Поставить на позицию № (остальные сдвинутся вниз)</label>' + inp('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
     '<textarea id="f-nums" rows="4" placeholder="Номера: через пробел, запятую, с новой строки или диапазоном 5525-5530" class="w-full border-2 p-3 rounded-lg uppercase"></textarea><p id="f-prev" class="text-xs text-gray-500"></p>' +
     mb('sortsave', 'Добавить', 'bg-blue-600 text-white') + mb('close', 'Отмена', 'text-gray-500'));
@@ -434,24 +459,32 @@ document.addEventListener('input', e => {
   if (e.target.id === 'f-nums') { const a = expand(e.target.value); $('f-prev').textContent = a.length ? `Будет добавлено: ${a.length} (${a[0]}${a.length > 1 ? ' … ' + a[a.length - 1] : ''})` : ''; }
 });
 document.addEventListener('change', e => {
-  if (e.target.id === 'f-sel') $('f-new').style.display = e.target.value ? 'none' : 'block';
+  if (e.target.id === 'f-sel') { const v = e.target.value; $('f-new').style.display = v ? 'none' : 'block'; $('f-ex').style.display = v ? 'block' : 'none'; if (v) inheritFor(v); }
   if (e.target.dataset.alerts) localStorage.setItem('alerts', e.target.checked ? 'on' : 'off');
   const k = e.target.dataset.col; if (k) { cols[k] = e.target.checked ? 1 : 0; localStorage.setItem('cols', JSON.stringify(cols)); }
 });
+function inheritFor(sid) {      // плавка / партия / тип — от последней трубы этого сортамента перед местом вставки
+  const s = sorts.find(x => x.id === sid) || {}, pos = parseInt($('f-s').value) || pipes.length + 1;
+  const before = pipes.slice(0, Math.max(0, pos - 1)).filter(p => p.sort_id === sid), prev = before[before.length - 1];
+  $('f-xp').value = prev ? (prev.plavka || s.plavka || '') : (s.plavka || ''); $('f-xa').value = prev ? (prev.party || s.party || '') : (s.party || '');
+  curKind = prev ? (prev.kind || '') : ''; $('kinds').innerHTML = kindChips(curKind);
+}
 async function sortSave() {
   const g = id => $(id).value.trim(), nums = expand(g('f-nums')), selId = g('f-sel');
   if (!nums.length) return toast('Введите номера труб');
   if (!selId && (!g('f-d') || !g('f-w'))) return toast('Нужны диаметр и стенка');
-  const have = new Set(pipes.map(p => p.pipe_number)), fresh = nums.filter(n => !have.has(n));
-  if (!fresh.length) return toast('Все номера уже есть в смене');
+  const have = new Set(pipes.map(p => p.pipe_number)), fresh = selId && curKind === 'rep' ? nums : nums.filter(n => !have.has(n));   // повторы — можно с теми же номерами
+  if (!fresh.length) return toast('Все номера уже есть в смене' + (selId ? '. Для повтора выберите тип «Повтор»' : ''));
   let sid = selId, created = null;
   if (!sid) {
     const { data, error } = await db.from('sortaments').insert({ shift_id: view.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n') }).select().single();
     if (error) return toast(error.message); sid = created = data.id;
   }
+  const so = selId ? sorts.find(x => x.id === selId) : null, xp = selId ? g('f-xp') : '', xa = selId ? g('f-xa') : '';
   const start = Math.min(Math.max(parseInt(g('f-s')) || pipes.length + 1, 1), pipes.length + 1);   // пробелов быть не может
   if (start <= pipes.length) await db.rpc('make_room', { p_shift: view.id, p_at: start, p_count: fresh.length });
-  const { error: e2 } = await db.from('pipes').insert(fresh.map((n, i) => ({ shift_id: view.id, sort_id: sid, seq: start + i, pipe_number: n, added_by: ses.name })));
+  const { error: e2 } = await db.from('pipes').insert(fresh.map((n, i) => ({ shift_id: view.id, sort_id: sid, seq: start + i, pipe_number: n, added_by: ses.name,
+    plavka: so && xp && xp !== (so.plavka || '') ? xp : null, party: so && xa && xa !== (so.party || '') ? xa : null, kind: so && curKind ? curKind : null })));
   if (e2) { if (created) await db.from('sortaments').delete().eq('id', created); await db.rpc('renumber_shift', { p_shift: view.id }); return toast(e2.message); }
   await db.rpc('renumber_shift', { p_shift: view.id });
   closeM(); toast(`Добавлено труб: ${fresh.length}` + (nums.length - fresh.length ? `, дублей пропущено: ${nums.length - fresh.length}` : '')); await fetchAll(); setTab('list');
@@ -592,19 +625,22 @@ const WPS = {
 const ACC = { blue: '#2563eb', emerald: '#059669', amber: '#d97706', violet: '#7c3aed', rose: '#e11d48' };
 let look = Object.assign({ acc: 'blue', wp: 'pipes' }, JSON.parse(localStorage.getItem('look') || '{}'));
 const saveLook = () => localStorage.setItem('look', JSON.stringify(look));
+const IMGS = { ind: 'wp-ind.jpg', fun: 'wp-fun.jpg', coffee: 'wp-coffee.jpg' };
 function applyLook() {
   const b = document.body; document.documentElement.style.setProperty('--ac', ACC[look.acc] || ACC.blue);
   const calm = !ses.uid || ['chat', 'set', 'cal', 'games', 'admin'].includes(tab);   // обои только на «спокойных» экранах
+  const key = !ses.uid ? (look.wp === 'none' ? 'none' : 'ind') : look.wp;              // экран входа — обои «Индустрия»
   let img = '';
-  if (calm && look.wp === 'photo') { const p = localStorage.getItem('wpimg'); if (p) { const o = b.classList.contains('dark') ? '11,18,32,.7' : '255,255,255,.62'; img = `linear-gradient(rgba(${o}),rgba(${o})),url("${p}")`; } }
-  else if (calm && WPS[look.wp]) img = svgUrl(WPS[look.wp]);
+  if (calm && key === 'photo') { const p = localStorage.getItem('wpimg'); if (p) { const o = b.classList.contains('dark') ? '11,18,32,.7' : '255,255,255,.62'; img = `linear-gradient(rgba(${o}),rgba(${o})),url("${p}")`; } }
+  else if (calm && IMGS[key]) img = `url("${IMGS[key]}")`;
+  else if (calm && WPS[key]) img = svgUrl(WPS[key]);
   b.style.backgroundImage = img; b.style.backgroundAttachment = 'fixed'; b.style.backgroundPosition = 'center';
-  b.style.backgroundSize = look.wp === 'photo' ? 'cover' : look.wp === 'plate' ? '80px' : '160px'; b.classList.toggle('wp', !!img);
+  b.style.backgroundSize = (key === 'photo' || IMGS[key]) ? 'cover' : key === 'plate' ? '80px' : '160px'; b.classList.toggle('wp', !!img);
 }
 const lookHTML = () => `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-2">🎨 Оформление</h3><div class="flex gap-3 mb-2">${Object.entries(ACC).map(([k, c]) => `<button data-act="acc" data-v="${k}" class="w-9 h-9 rounded-full ${look.acc === k ? 'ring-4 ring-offset-2 ring-gray-400' : ''}" style="background:${c}"></button>`).join('')}</div>
-  <div class="flex flex-wrap gap-1 text-sm">${[['none', 'Без обоев'], ['pipes', 'Трубы'], ['waves', 'Волны'], ['plate', 'Металл'], ['photo', 'Своё фото']].map(([k, n]) => `<button data-act="wp" data-v="${k}" class="px-3 py-2 rounded-lg ${look.wp === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('')}</div>
+  <div class="flex flex-wrap gap-1 text-sm">${[['none', 'Без обоев'], ['ind', 'Индустрия'], ['fun', 'Монстрики'], ['coffee', 'Кофе'], ['pipes', 'Трубы'], ['waves', 'Волны'], ['plate', 'Металл'], ['photo', 'Своё фото']].map(([k, n]) => `<button data-act="wp" data-v="${k}" class="px-3 py-2 rounded-lg ${look.wp === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('')}</div>
   <label class="block mt-2 text-sm text-center py-2 bg-gray-200 rounded-lg cursor-pointer">📷 Выбрать фото для обоев<input id="wp-file" type="file" accept="image/*" class="hidden"></label>
-  <p class="text-xs text-gray-500 mt-1">Обои показываются на «спокойных» экранах: вход, чат, отпуска, игры, опции. Фото хранится только на этом телефоне.</p></div>`;
+  <p class="text-xs text-gray-500 mt-1">Обои показываются на «спокойных» экранах: вход, чат, отпуска, игры, опции. Экран входа всегда с обоями «Индустрия» (если обои не выключены). Своё фото хранится только на этом телефоне.</p></div>`;
 document.addEventListener('change', async e => {
   if (e.target.id === 'wp-file' && e.target.files[0]) {
     try { localStorage.setItem('wpimg', await toDataUrl(await shrink(e.target.files[0], 1000, .6))); look.wp = 'photo'; saveLook(); applyLook(); rSet(); } catch (er) { toast('Не удалось сохранить фото'); }
@@ -791,14 +827,29 @@ document.addEventListener('click', async e => {
   switch (d.act) {
     case 'ws': { const { data, error } = await db.rpc('ws_join', { p_pass: $('w-pass').value }); if (error) return toast(error.message); if (data === 'none') return startWs(); if (data === 'wrong') return toast('Неверный пароль цеха'); ses = { ws: true }; saveS(); return toUsers(); }
     case 'users': return toUsers();
+    case 'addend': { const last = pipes[pipes.length - 1]; if (!last) return; return insModal(last.id, { kind: last.kind || '' }); }
+    case 'seltoggle': sel.on = true; sel.ids.clear(); sel.last = null; sel.range = false; selBar(); return rList();
+    case 'selcancel': sel.on = false; sel.ids.clear(); selBar(); return rList();
+    case 'selrange': sel.range = !sel.range; return selBar();
+    case 'selbelow': { const j = pipes.findIndex(x => x.id === (sel.last || [...sel.ids][0])); if (j < 0) return toast('Сначала отметьте первую трубу'); const sid = pipes[j].sort_id; for (let k = j; k < pipes.length && pipes[k].sort_id === sid; k++) sel.ids.add(pipes[k].id); selBar(); return rList(); }
+    case 'seldel': {
+      if (!sel.ids.size) return toast('Ничего не выбрано'); if (!confirm('Удалить труб: ' + sel.ids.size + '? Нумерация ниже сдвинется.')) return;
+      const ids = [...sel.ids], { error } = await db.rpc('delete_pipes', { p_ids: ids }); if (error) return toast(error.message);
+      sel.on = false; sel.ids.clear(); selBar(); toast('Удалено: ' + ids.length); return fetchAll();
+    }
     case 'kind': curKind = d.k; $('kinds').innerHTML = kindChips(curKind); return;
-    case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (pipes.some(x => x.id !== d.id && x.pipe_number === v)) return toast('Такой номер уже есть'); patch(d.id, { pipe_number: v, kind: curKind || null, plavka: $('e-pl').value.trim() || null, party: $('e-pa').value.trim() || null }); return closeM(); }
+    case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (curKind !== 'rep' && pipes.some(x => x.id !== d.id && x.pipe_number === v && x.kind !== 'rep')) return toast('Такой номер уже есть. Для повтора выберите тип «Повтор»'); patch(d.id, { pipe_number: v, kind: curKind || null, plavka: $('e-pl').value.trim() || null, party: $('e-pa').value.trim() || null }); return closeM(); }
     case 'insform': return insModal(d.id);
     case 'insgo': {
-      const p = pipes.find(x => x.id === d.id), num = $('i-num').value.trim(); if (!p || !num) return toast('Введите номер трубы');
-      const { error } = await db.rpc('insert_pipe', { p_shift: view.id, p_sort: p.sort_id, p_after: p.seq, p_number: num, p_plavka: $('i-pl').value, p_party: $('i-pa').value, p_kind: curKind, p_by: ses.name });
-      if (error) return toast(/duplicate|unique/i.test(error.message) ? 'Такой номер уже есть в смене' : error.message);
-      closeM(); toast('Труба вставлена, нумерация сдвинута'); return fetchAll();
+      const p = pipes.find(x => x.id === d.id), nums = expand($('i-num').value); if (!p || !nums.length) return toast('Введите номер трубы');
+      const s = sortOf(p.sort_id) || {}, pl = $('i-pl').value.trim(), pa = $('i-pa').value.trim(), kind = curKind;
+      const have = new Set(pipes.map(x => x.pipe_number)), fresh = kind === 'rep' ? nums : nums.filter(n => !have.has(n)); if (!fresh.length) return toast('Эти номера уже есть в смене. Для повтора выберите тип «Повтор»');
+      let last = null, done = 0;
+      for (let i = 0; i < fresh.length; i++) {
+        const { data, error } = await db.rpc('insert_pipe', { p_shift: view.id, p_sort: p.sort_id, p_after: p.seq + i, p_number: fresh[i], p_plavka: pl === (s.plavka || '') ? '' : pl, p_party: pa === (s.party || '') ? '' : pa, p_kind: kind, p_by: ses.name });
+        if (error) { toast(/duplicate|unique/i.test(error.message) ? 'Такой номер уже есть. Для повтора выберите тип «Повтор»' : error.message); break; } last = data; done++;
+      }
+      await fetchAll(); if (last) return insModal(last, { pl, pa, kind, msg: 'Вставлено: ' + done + ' шт.' }); return;
     }
     case 'acc': look.acc = d.v; saveLook(); applyLook(); return rSet();
     case 'wp': if (d.v === 'photo' && !localStorage.getItem('wpimg')) return toast('Сначала выберите фото кнопкой ниже'); look.wp = d.v; saveLook(); applyLook(); return rSet();
