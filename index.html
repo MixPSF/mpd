@@ -29,6 +29,8 @@
   body.dark .text-slate-800, body.dark .text-slate-700, body.dark .text-gray-800, body.dark .text-gray-700 { color: #e2e8f0; }
   body.dark .text-slate-600, body.dark .text-slate-500, body.dark .text-gray-600, body.dark .text-gray-500, body.dark .text-slate-400, body.dark .text-gray-400 { color: #94a3b8; }
   body.dark .text-red-800 { color: #fecaca; }
+  .bad-row { border-left-width: 6px; border-left-color: #dc2626; }
+  body.dark .bg-red-200 { background: #5f1a22; } body.dark .border-red-400 { border-color: #ef4444; }
   body.dark .bg-red-50 { background: #3a1217; } body.dark .border-red-200 { border-color: #7f1d1d; } body.dark .text-red-600 { color: #fca5a5; }
   body.dark input, body.dark textarea, body.dark select { background: #0b1220; color: #e2e8f0; }
   body.dark * { border-color: #475569; }
@@ -60,6 +62,7 @@
   <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div><div id="v-games" class="hidden space-y-3"></div><div id="v-cal" class="hidden space-y-3"></div>
 </main>
 <nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white flex overflow-x-auto text-[11px] text-center" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
+<div id="jump" class="hidden fixed right-3 z-20 flex flex-col gap-2" style="bottom:calc(var(--nh,58px) + 70px)"><button data-act="jup" aria-label="Вверх" class="w-12 h-12 rounded-full bg-slate-700 text-white text-xl shadow-lg opacity-90">⬆</button><button data-act="jdown" aria-label="Вниз" class="w-12 h-12 rounded-full bg-slate-700 text-white text-xl shadow-lg opacity-90">⬇</button></div>
 <div id="selbar" class="hidden fixed inset-x-0 z-30 bg-slate-800 text-white p-2 flex items-center gap-2 text-sm" style="bottom:var(--nh,58px)"></div>
 <div id="modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3"></div>
 <div id="toast" class="hidden fixed bottom-20 inset-x-4 z-50 bg-slate-900 text-white text-sm p-3 rounded-lg text-center"></div>
@@ -304,7 +307,7 @@ function navUpd() {
 function setTab(t) {
   tab = t; if (t === 'chat') unread = 0;
   ['list', 'sort', 'stat', 'arch', 'cal', 'games', 'chat', 'set', 'admin'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
-  sel.on = false; sel.ids.clear(); selBar();
+  sel.on = false; sel.ids.clear(); selBar(); $('jump').classList.add('hidden');
   navUpd(); layoutVars(); applyLook(); if (t === 'games') gamesLoad(); render(true);
 }
 function render(force) {
@@ -347,7 +350,7 @@ function rowHTML(p) {
   if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600');
   const chk = sel.on ? `<span class="text-lg leading-none">${sel.ids.has(p.id) ? '☑' : '☐'}</span>` : '';
   const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide flex-1 ${mo ? 'truncate' : 'break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}`;
-  const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}${sel.ids.has(p.id) ? ' ring-2 ring-blue-500' : ''}" ${flashStyle(p)}`;
+  const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-200 border-red-400 bad-row' : 'bg-white border-gray-200'}${sel.ids.has(p.id) ? ' ring-2 ring-blue-500' : ''}" ${flashStyle(p)}`;
   return mo ? `<div ${at}><div class="flex items-center gap-1">${num}${b}</div></div>`
     : `<div ${at}><div class="flex items-center gap-1.5 mb-0.5">${num}</div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
 }
@@ -362,7 +365,7 @@ function rList() {
     h += rowHTML(p);
   });
   if (uzkish() && pipes.length && !sel.on) h += '<button data-act="addend" class="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold">➕ Добавить трубы в конец списка</button>';
-  $('v-list').innerHTML = h;
+  $('v-list').innerHTML = h; $('jump').classList.toggle('hidden', pipes.length < 8);
 }
 function updRow(id, rt) {                                     // перерисовать только одну строку
   const p = pipes.find(x => x.id === id);
@@ -827,6 +830,8 @@ document.addEventListener('click', async e => {
   switch (d.act) {
     case 'ws': { const { data, error } = await db.rpc('ws_join', { p_pass: $('w-pass').value }); if (error) return toast(error.message); if (data === 'none') return startWs(); if (data === 'wrong') return toast('Неверный пароль цеха'); ses = { ws: true }; saveS(); return toUsers(); }
     case 'users': return toUsers();
+    case 'jdown': return window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    case 'jup': return window.scrollTo({ top: 0, behavior: 'smooth' });
     case 'addend': { const last = pipes[pipes.length - 1]; if (!last) return; return insModal(last.id, { kind: last.kind || '' }); }
     case 'seltoggle': sel.on = true; sel.ids.clear(); sel.last = null; sel.range = false; selBar(); return rList();
     case 'selcancel': sel.on = false; sel.ids.clear(); selBar(); return rList();
@@ -849,7 +854,7 @@ document.addEventListener('click', async e => {
         const { data, error } = await db.rpc('insert_pipe', { p_shift: view.id, p_sort: p.sort_id, p_after: p.seq + i, p_number: fresh[i], p_plavka: pl === (s.plavka || '') ? '' : pl, p_party: pa === (s.party || '') ? '' : pa, p_kind: kind, p_by: ses.name });
         if (error) { toast(/duplicate|unique/i.test(error.message) ? 'Такой номер уже есть. Для повтора выберите тип «Повтор»' : error.message); break; } last = data; done++;
       }
-      await fetchAll(); if (last) return insModal(last, { pl, pa, kind, msg: 'Вставлено: ' + done + ' шт.' }); return;
+      if (done) { closeM(); toast('Вставлено: ' + done + ' шт.'); } await fetchAll(); return;
     }
     case 'acc': look.acc = d.v; saveLook(); applyLook(); return rSet();
     case 'wp': if (d.v === 'photo' && !localStorage.getItem('wpimg')) return toast('Сначала выберите фото кнопкой ниже'); look.wp = d.v; saveLook(); applyLook(); return rSet();
