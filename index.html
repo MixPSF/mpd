@@ -62,7 +62,7 @@
   <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div><div id="v-games" class="hidden space-y-3"></div><div id="v-cal" class="hidden space-y-3"></div>
 </main>
 <nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white flex overflow-x-auto text-[11px] text-center" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
-<div id="jump" class="hidden fixed right-3 z-20 flex flex-col gap-2" style="bottom:calc(var(--nh,58px) + 70px)"><button data-act="jup" aria-label="Вверх" class="w-12 h-12 rounded-full bg-slate-700 text-white text-xl shadow-lg opacity-90">⬆</button><button data-act="jdown" aria-label="Вниз" class="w-12 h-12 rounded-full bg-slate-700 text-white text-xl shadow-lg opacity-90">⬇</button></div>
+<button id="jump" data-act="jdown" aria-label="Вниз" class="hidden fixed z-20 w-10 h-10 rounded-full bg-slate-700 text-white text-lg shadow opacity-50" style="right:6px;bottom:calc(var(--nh,58px) + 14px)">⬇</button>
 <div id="selbar" class="hidden fixed inset-x-0 z-30 bg-slate-800 text-white p-2 flex items-center gap-2 text-sm" style="bottom:var(--nh,58px)"></div>
 <div id="modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3"></div>
 <div id="toast" class="hidden fixed bottom-20 inset-x-4 z-50 bg-slate-900 text-white text-sm p-3 rounded-lg text-center"></div>
@@ -331,7 +331,13 @@ function cell(p, c, label, val, cls, fixed) {
 }
 const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">повтор</span>' : p.kind === 'probe' ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
   + (!mo && (p.plavka || p.party) ? `<span class="text-[10px] text-gray-500 truncate max-w-[40%]">${p.plavka ? 'пл.' + esc(p.plavka) : ''} ${p.party ? 'п.' + esc(p.party) : ''}</span>` : '');
+function jumpVis() {       // стрелка вниз: только в списке, когда он длинный и мы не у самого низа
+  const j = $('jump'), near = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+  j.classList.toggle('hidden', !(tab === 'list' && pipes.length >= 8 && !near)); j.style.bottom = `calc(var(--nh,58px) + ${sel.on ? 64 : 14}px)`;
+}
+window.addEventListener('scroll', () => { if (tab === 'list') jumpVis(); }, { passive: true });
 function selBar() {
+  jumpVis();
   const b = $('selbar'); if (!sel.on) { b.classList.add('hidden'); return; } b.classList.remove('hidden');
   b.innerHTML = `<span class="font-bold">Выбрано ${sel.ids.size}</span><button data-act="selrange" class="px-2 py-1 rounded ${sel.range ? 'bg-blue-600' : 'bg-slate-600'}">Диапазон</button><button data-act="selbelow" class="px-2 py-1 rounded bg-slate-600">Все ниже</button><span class="flex-1"></span><button data-act="seldel" class="px-3 py-2 rounded-lg bg-red-600 font-bold">🗑 Удалить</button><button data-act="selcancel" class="px-2 py-2">✕</button>`;
 }
@@ -365,7 +371,7 @@ function rList() {
     h += rowHTML(p);
   });
   if (uzkish() && pipes.length && !sel.on) h += '<button data-act="addend" class="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold">➕ Добавить трубы в конец списка</button>';
-  $('v-list').innerHTML = h; $('jump').classList.toggle('hidden', pipes.length < 8);
+  $('v-list').innerHTML = h; jumpVis();
 }
 function updRow(id, rt) {                                     // перерисовать только одну строку
   const p = pipes.find(x => x.id === id);
@@ -831,7 +837,6 @@ document.addEventListener('click', async e => {
     case 'ws': { const { data, error } = await db.rpc('ws_join', { p_pass: $('w-pass').value }); if (error) return toast(error.message); if (data === 'none') return startWs(); if (data === 'wrong') return toast('Неверный пароль цеха'); ses = { ws: true }; saveS(); return toUsers(); }
     case 'users': return toUsers();
     case 'jdown': return window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-    case 'jup': return window.scrollTo({ top: 0, behavior: 'smooth' });
     case 'addend': { const last = pipes[pipes.length - 1]; if (!last) return; return insModal(last.id, { kind: last.kind || '' }); }
     case 'seltoggle': sel.on = true; sel.ids.clear(); sel.last = null; sel.range = false; selBar(); return rList();
     case 'selcancel': sel.on = false; sel.ids.clear(); selBar(); return rList();
