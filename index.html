@@ -42,6 +42,8 @@
   body.dark .bg-sky-100 { background: #0c4a6e; } body.dark .text-sky-700 { color: #7dd3fc; } body.dark .bg-sky-200 { background: #075985; }
   body.dark .bg-purple-100 { background: #3b0764; } body.dark .text-purple-700 { color: #d8b4fe; }
   body.wp #chat-wrap { background: transparent; }
+  body.mini #hdrbar, body.mini #nav, body.mini #app, body.mini #selbar, body.mini #jump, body.mini #err-box, body.mini #chat-wrap { display: none !important; }
+  body.mini { padding-bottom: 0 !important; background-image: none !important; }
   body.kb #nav { display: none !important; } #chat-wrap { position: fixed; left: 0; right: 0; top: var(--hh, 52px); bottom: var(--nh, 58px); display: flex; flex-direction: column; z-index: 5; }
   #chat-msgs { flex: 1; overflow-y: auto; width: 100%; max-width: 28rem; margin: 0 auto; }
   body.kb #chat-wrap { bottom: 0; }
@@ -51,6 +53,7 @@
 <header id="hdrbar" class="bg-slate-800 text-white p-3 sticky top-0 z-10 shadow-md flex justify-between items-center gap-2">
   <h1 class="font-bold text-base truncate" id="hdr">Цех МПД / УЗК</h1>
   <div class="flex items-center gap-2 shrink-0">
+    <button id="miniBtn" data-act="mini" class="hidden text-base px-2 py-1 bg-slate-600 rounded" title="Мини-окно">🗗</button>
     <button id="theme" data-act="theme" class="text-base px-2 py-1 bg-slate-600 rounded">🌓</button>
     <button id="online" data-act="online" class="hidden text-xs px-2 py-1 bg-slate-600 rounded">👥 0</button>
     <span id="sync-status" class="text-xs px-2 py-1 bg-yellow-600 rounded">Подключение...</span>
@@ -58,6 +61,7 @@
 </header>
 <div id="err-box" style="display:none" class="m-3 p-3 bg-red-100 text-red-800 text-sm rounded break-all"></div>
 <section id="start" class="hidden p-3 max-w-md mx-auto space-y-3"></section>
+<div id="mini" class="hidden"></div>
 <main id="app" class="hidden p-2 max-w-md mx-auto">
   <div id="v-list" class="space-y-1.5"></div><div id="v-sort" class="hidden space-y-3"></div>
   <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div><div id="v-games" class="hidden space-y-3"></div><div id="v-ban" class="hidden space-y-3"></div><div id="v-cal" class="hidden space-y-3"></div>
@@ -158,7 +162,7 @@ function startUI(step) {
     '<div class="grid grid-cols-3 gap-1 text-center font-semibold">' + Object.keys(ROLES).map(r => `<button data-act="role" data-r="${r}" class="py-3 rounded ${r === st.role ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">${ROLES[r]}</button>`).join('') + '</div>' +
     mb('login', 'Войти', 'bg-emerald-600 text-white') + mb('users', 'Назад', 'text-gray-500'));
   if (step === 'adm') h = card('Администратор', inp('ad-login', 'Логин', 'value="admin" autocapitalize="none" autocomplete="off"') + inp('ad-pass', 'Пароль', 'type="password"') + mb('admlogin', 'Войти', 'bg-emerald-600 text-white') + mb('admback', 'Назад', 'text-gray-500'));
-  $('start').innerHTML = h; applyLook();
+  $('start').innerHTML = h; applyLook(); $('miniBtn').classList.add('hidden'); if (mini.on) setMini(false);
 }
 async function startWs() { const { data } = await db.rpc('ws_exists'); st.wsExists = !!data; startUI('ws'); }
 async function toUsers() { await loadUsers(); startUI(st.users.length ? 'users' : 'new'); }
@@ -208,7 +212,7 @@ async function enter() {
     if (rs === 'gone') { toast('Учётная запись удалена'); return logout(true); }
   }
   $('start').classList.add('hidden'); $('app').classList.remove('hidden'); $('nav').classList.remove('hidden'); $('online').classList.remove('hidden');
-  $('hdr').textContent = `${ses.avatar} ${ses.name} · ${RN[ses.role]}`;
+  $('hdr').textContent = `${ses.avatar} ${ses.name} · ${RN[ses.role]}`; $('miniBtn').classList.toggle('hidden', ses.role !== 'mpd');
   tab = 'list'; unread = 0; startRT(); clearInterval(hb); hb = setInterval(heartbeat, 30000); if (localStorage.getItem('pushOn') === '1') pushSync();
   try { const sn = JSON.parse(localStorage.getItem('snap') || 'null'), ms = JSON.parse(localStorage.getItem('msnap') || '[]');
     if (sn && sn.view && live(sn.view.shift_date, sn.view.shift_type)) { cur = sn.cur; view = sn.view; grace = sn.grace; pipes = sn.pipes; sorts = sn.sorts; msgs = ms; setTab(tab); } } catch (e) {}   // мгновенный показ из кэша
@@ -307,6 +311,26 @@ async function flush(id) {
   const { error } = await db.from('pipes').update(e.obj).eq('id', id); lastEdit[id] = Date.now();
   if (error) { const p = pipes.find(x => x.id === id); if (p) { Object.assign(p, e.old); updRow(id); } toast('Не сохранилось: ' + error.message); buzz([100, 50, 100]); } else if (uzkish()) brakCheck(id, e);
 }
+const mini = { on: false, auto: false };
+function rMini() {          // компактное окно МПД: 4 последние добавленные трубы + две кнопки МПД
+  const last = pipes.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 4);
+  const btn = (p, n) => { const v = p['mpd' + n + '_val'], cls = v === 'N' ? 'bg-white text-green-700' : v === '-' ? 'bg-white/30 text-white' : (MC[v] || 'bg-white text-slate-800') + ' border-2 border-white';
+    return `<button data-id="${p.id}" data-c="mpd${n}" class="w-14 h-11 rounded-lg ${cls} font-black text-xl leading-none active:scale-95">${esc(v)}<span class="block text-[9px] font-normal opacity-70">${n}</span></button>`; };
+  $('mini').innerHTML = `<div class="flex items-center justify-between bg-slate-800 text-white px-2 py-1 text-xs"><span>МПД · последние трубы</span><button data-act="mini" class="px-2 text-base" title="Развернуть">⤢</button></div>` +
+    (last.map(p => `<div class="flex items-center gap-2 px-2 py-1 text-white ${isBad(p) ? 'bg-red-600' : 'bg-green-600'}"><span class="text-3xl font-black w-12 text-right leading-none">${p.seq}</span><span class="text-lg font-bold flex-1 truncate leading-none">${esc(p.pipe_number)}</span>${btn(p, 1)}${btn(p, 2)}</div>`).join('') || '<p class="text-center text-gray-400 py-6 text-sm">Труб пока нет</p>');
+}
+function setMini(on, auto) {
+  mini.on = on; mini.auto = !!auto && on; document.body.classList.toggle('mini', on); $('mini').classList.toggle('hidden', !on);
+  if (on) rMini(); else render(true);
+}
+$('mini').addEventListener('click', e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return; const p = pipes.find(x => x.id === b.dataset.id), c = b.dataset.c; if (!p || !can(c)) return;
+  buzz(20); const i = CY.indexOf(p[c + '_val']); setMpd(p.id, c, i >= 4 ? 'N' : CY[i + 1]);
+});
+window.addEventListener('resize', () => {        // маленькое «плавающее» окно Android -> мини-режим автоматически
+  if (role() !== 'mpd' || !ses.uid) return; const small = window.innerHeight < 460 || window.innerWidth < 300;
+  if (small && !mini.on) setMini(true, true); else if (!small && mini.on && mini.auto) setMini(false);
+});
 const isBad = p => p.uzk_def !== 'N' || p.uzk_minus != null;
 function brakCheck(id, e) {          // УЗК отметил брак (был годной) -> push всем МПД
   const p = pipes.find(x => x.id === id); if (!p) return;
@@ -342,6 +366,7 @@ function setTab(t) {
 }
 function render(force) {
   if (!view) return;
+  if (mini.on) return rMini();
   if (touching && !force) { needR = true; return; }          // не перерисовываем список под пальцем
   if (['arch', 'chat', 'cal', 'games'].includes(tab) && !force) return;
   ({ list: rList, sort: rSort, stat: rStat, arch: rArch, chat: rChat, set: rSet, admin: rAdmin, cal: rCal, games: rGames, ban: rBan })[tab]();
@@ -404,6 +429,7 @@ function rList() {
   $('v-list').innerHTML = h; jumpVis();
 }
 function updRow(id, rt) {                                     // перерисовать только одну строку
+  if (mini.on) return rMini();
   const p = pipes.find(x => x.id === id);
   if (tab !== 'list' || !p) return render();
   if (rt && touching) { needR = true; return; }
@@ -548,7 +574,7 @@ const trub = n => n % 10 === 1 && n % 100 !== 11 ? 'труба' : [2, 3, 4].incl
 function mpdReport() {            // отчёт МПД: 3 окна по 4 часа + общий итог за смену
   const f = x => String(x == null ? '' : x).replace('.', ','), D = view.shift_type === 'D', start = D ? 7 : 19;
   const LB = D ? ['07:00–11:00', '11:00–15:00', '15:00–19:00'] : ['19:00–23:00', '23:00–03:00', '03:00–07:00'];
-  const hourK = iso => +new Date(iso).toLocaleString('sv-SE', { timeZone: TZ }).slice(11, 13);
+  const hourK = iso => +new Date(iso).toLocaleString('sv-SE', { timeZone: 'Europe/Kyiv' }).slice(11, 13);
   const win = iso => iso ? Math.min(2, Math.floor(((((hourK(iso) - start) % 24) + 24) % 24) / 4)) : -1;   // отметки после конца смены — в последнее окно
   const W = [0, 1, 2].map(() => ({ pass: 0, sizes: new Map() })), T = { pass: 0, sizes: new Map() };
   const sz = (m, s) => { const k = [s.diameter, s.wall, s.grade].map(x => String(x || '').trim().toUpperCase()).join('|'); if (!m.has(k)) m.set(k, { label: `${f(s.diameter)}*${f(s.wall)} ${s.grade || ''}`.trim(), a: 0, b: 0, pls: new Map() }); return m.get(k); };
@@ -879,15 +905,20 @@ async function sendPush(roles, title, body, extra) {
     return await r.json().catch(() => ({ error: 'HTTP ' + r.status }));
   } catch (e) { return { error: String(e) }; }
 }
+const sameKey = sub => { try { const k = sub.options && sub.options.applicationServerKey; if (!k) return true; const a = new Uint8Array(k), b = b64u(VAPID); return a.length === b.length && a.every((x, i) => x === b[i]); } catch (e) { return true; } };
+async function pushSubscribe(reg) {      // подписка со старым ключом VAPID заменяется новой автоматически
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !sameKey(sub)) { await sub.unsubscribe(); sub = null; }
+  return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
+}
 async function pushSave(sub) { const j = sub.toJSON(); await db.rpc('push_save', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_user: ses.uid, p_name: ses.name, p_role: ses.role }); }
-async function pushSync() { try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await pushSave(sub); } catch (e) {} }
+async function pushSync() { try { if (Notification.permission !== 'granted') return; const reg = await navigator.serviceWorker.ready; await pushSave(await pushSubscribe(reg)); } catch (e) {} }
 async function pushUnsave() { try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await db.rpc('push_remove', { p_endpoint: sub.endpoint }); } catch (e) {} }
 async function pushEnable() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return toast('Этот браузер не поддерживает push-уведомления');
   const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('Разрешение на уведомления не выдано');
   try {
-    const reg = await navigator.serviceWorker.ready; let sub = await reg.pushManager.getSubscription();
-    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
+    const reg = await navigator.serviceWorker.ready, sub = await pushSubscribe(reg);
     await pushSave(sub); localStorage.setItem('pushOn', '1'); toast('Уведомления включены'); rSet();
   } catch (e) { toast('Не удалось включить: ' + e.message); }
 }
@@ -1019,10 +1050,11 @@ document.addEventListener('click', async e => {
     case 'admwsform': return wsModal();
     case 'admws': { if (await admRpc('admin_ws_set', { p_new: $('a-ws').value })) { closeM(); toast('Пароль цеха сохранён'); if (tab === 'admin') rAdmin(); } return; }
     case 'admpass': { const { data, error } = await db.rpc('admin_set_pass', { p_old: $('ap-old').value, p_new: $('ap-new').value }); if (error) return toast(error.message); return toast(data ? 'Пароль администратора изменён' : 'Неверный текущий пароль или новый слишком простой'); }
+    case 'mini': return setMini(!mini.on);
     case 'admrel': { if (await admRpc('admin_release_user', { p_id: d.id })) toast('Вход для этой учётки освобождён'); return; }
     case 'pushon': return pushEnable();
     case 'pushoff': return pushOff();
-    case 'pushtest': { const r = await sendPush([ses.role], '🔔 Проверка', 'Если вы видите это — уведомления работают', { onlyUser: ses.uid, tag: 'test' }); return toast(r.error ? 'Ошибка: ' + r.error : r.sent ? 'Отправлено, ждите уведомление' : 'Сервер ответил, но подписка не найдена — включите уведомления заново'); }
+    case 'pushtest': { const r = await sendPush([ses.role], '🔔 Проверка', 'Если вы видите это — уведомления работают', { onlyUser: ses.uid, tag: 'test' }); return toast(r.error ? 'Ошибка: ' + r.error : r.sent ? 'Отправлено, ждите уведомление' : !r.subs ? 'Подписка не найдена — нажмите «Отключить», затем «Включить»' : 'Не доставлено: ' + ((r.errors && r.errors[0]) ? (r.errors[0].status || '') + ' ' + r.errors[0].message : 'неизвестная ошибка')); }
     case 'banner': return sendBanner(d.i, d.t);
     case 'bannercustom': { const t = $('b-text').value.trim(); if (!t) return toast('Введите текст'); $('b-text').value = ''; return sendBanner('📣', t); }
     case 'brakx': $('brak').classList.add('hidden'); return;
