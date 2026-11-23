@@ -35,6 +35,7 @@
   body.dark input, body.dark textarea, body.dark select { background: #0b1220; color: #e2e8f0; }
   body.dark * { border-color: #475569; }
   @keyframes alertflash { 0%,100% { background: rgba(185,28,28,.96); } 50% { background: rgba(239,68,68,.96); } } #alert { animation: alertflash 1s infinite; }
+  @keyframes alertinfo { 0%,100% { background: rgba(29,78,216,.96); } 50% { background: rgba(59,130,246,.96); } } #alert.info { animation: alertinfo 1s infinite; }
   @keyframes flashok { from { background-color: #4ade80; border-color: #16a34a; } }
   @keyframes flashbad { from { background-color: #f87171; border-color: #dc2626; } }
   body .bg-blue-600 { background-color: var(--ac, #2563eb); }
@@ -59,16 +60,17 @@
 <section id="start" class="hidden p-3 max-w-md mx-auto space-y-3"></section>
 <main id="app" class="hidden p-2 max-w-md mx-auto">
   <div id="v-list" class="space-y-1.5"></div><div id="v-sort" class="hidden space-y-3"></div>
-  <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div><div id="v-games" class="hidden space-y-3"></div><div id="v-cal" class="hidden space-y-3"></div>
+  <div id="v-stat" class="hidden space-y-3"></div><div id="v-arch" class="hidden space-y-3"></div><div id="v-chat" class="hidden"></div><div id="v-set" class="hidden space-y-3"></div><div id="v-admin" class="hidden space-y-3"></div><div id="v-games" class="hidden space-y-3"></div><div id="v-ban" class="hidden space-y-3"></div><div id="v-cal" class="hidden space-y-3"></div>
 </main>
 <nav id="nav" class="hidden fixed bottom-0 inset-x-0 bg-slate-800 text-white flex overflow-x-auto text-[11px] text-center" style="padding-bottom:env(safe-area-inset-bottom,0)"></nav>
 <button id="jump" data-act="jdown" aria-label="Вниз" class="hidden fixed z-20 w-10 h-10 rounded-full bg-slate-700 text-white text-lg shadow opacity-50" style="right:6px;bottom:calc(var(--nh,58px) + 14px)">⬇</button>
+<div id="brak" data-act="brakx" class="hidden fixed inset-x-2 z-[90] bg-white text-slate-800 border-4 border-red-600 rounded-xl p-3 shadow-xl text-center" style="top:calc(var(--hh,52px) + 6px)"></div>
 <div id="selbar" class="hidden fixed inset-x-0 z-30 bg-slate-800 text-white p-2 flex items-center gap-2 text-sm" style="bottom:var(--nh,58px)"></div>
 <div id="modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3"></div>
 <div id="toast" class="hidden fixed bottom-20 inset-x-4 z-50 bg-slate-900 text-white text-sm p-3 rounded-lg text-center"></div>
 <div id="alert" class="hidden fixed inset-0 z-[100] flex flex-col items-center justify-center text-center text-white p-6">
   <button data-act="alertx" aria-label="Закрыть" class="absolute top-3 right-4 text-5xl leading-none p-2">✕</button>
-  <div class="text-7xl mb-4">🚨</div><div class="text-3xl font-black leading-tight">Дніпро оголошена повітряна тривога!</div><div id="alert-sub" class="mt-3 text-lg opacity-90"></div>
+  <div id="alert-icon" class="text-7xl mb-4">🚨</div><div id="alert-title" class="text-3xl font-black leading-tight">Дніпро оголошена повітряна тривога!</div><div id="alert-sub" class="mt-3 text-lg opacity-90"></div>
 </div>
 
 <script>
@@ -78,6 +80,9 @@ const CY = ['-', 'N', H, V, 'ЗАК'];
 const RA = '\u0420/\u0410', OBR = '\u041e\u0411\u0420';
 const MC = { [RA]: 'bg-red-600 text-white', [OBR]: 'bg-purple-700 text-white', '-': 'bg-gray-200 text-gray-600', N: 'bg-emerald-600 text-white', [H]: 'bg-red-600 text-white', [V]: 'bg-orange-600 text-white', 'ЗАК': 'bg-purple-700 text-white' };
 const CATS = [V, H, P, V + H, V + P, H + P, V + H + P];
+const SID = localStorage.getItem('sid') || (() => { const s = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem('sid', s); return s; })();   // «номер» этого телефона
+const VAPID = ((window.APP_CONFIG || {}).vapid) || 'BB2RgfuyUmt-RiemQ2PeoF4MPiB_bwIgNyxa_4t8zCnsKHQt_PQQRZQvh9e_3EqD1lr025rQ1HlxKOVaR1TPOII';
+const normName = s => String(s).trim().replace(/\s+/g, ' ').toLowerCase().replace(/ё/g, 'е').replace(/[aeopcxyk]/g, c => ({ a: 'а', e: 'е', o: 'о', p: 'р', c: 'с', x: 'х', y: 'у', k: 'к' }[c]));
 const FEATURES = { cal: false };   // вкладка «Отпуска»: поставьте true, чтобы вернуть
 const ROLES = { uzk: 'УЗК', mpd: 'МПД', otk: 'ОТК' }, RN = Object.assign({ admin: 'Админ' }, ROLES);
 const AVS = ['😀', '😎', '🤠', '👷', '🦊', '🐻', '🐯', '🦁', '🐸', '🐼', '🦉', '🚀', '⚙️', '🔧', '⭐', '🔥'];
@@ -158,10 +163,11 @@ function startUI(step) {
 async function startWs() { const { data } = await db.rpc('ws_exists'); st.wsExists = !!data; startUI('ws'); }
 async function toUsers() { await loadUsers(); startUI(st.users.length ? 'users' : 'new'); }
 async function doLogin() {
-  if (st.pick.has_pin) {
-    const { data, error } = await db.rpc('login_user', { p_id: st.pick.id, p_pin: $('l-pin').value });
-    if (error) return toast(error.message); if (!data) return toast('Неверный пароль учётки');
-  }
+  const { data, error } = await db.rpc('claim_session', { p_id: st.pick.id, p_sid: SID, p_pin: st.pick.has_pin ? $('l-pin').value : '' });
+  if (error) return toast(error.message);
+  if (data === 'bad_pin') return toast('Неверный пароль учётки');
+  if (data === 'busy') return toast('Эта учётная запись сейчас открыта на другом устройстве. Если это были вы — подождите 3 минуты или попросите администратора освободить её.');
+  if (data === 'gone') { toast('Учётная запись удалена'); return toUsers(); }
   ses = { ws: true, uid: st.pick.id, name: st.pick.name, avatar: st.pick.avatar, role: st.role, pin: st.pick.has_pin }; saveS(); enter();
 }
 async function doAdminLogin() {
@@ -183,13 +189,27 @@ async function admRpc(fn, args) {
   if (!data) { toast('Не удалось. Сессия администратора могла устареть — войдите заново'); return false; }
   return true;
 }
-function logout() { ses = { ws: true }; saveS(); stopRT(); closeM(); toUsers(); }
+let hb = null;
+async function heartbeat() {
+  if (!ses.uid || ses.uid === ADMIN_UID || !db) return;
+  const { data, error } = await db.rpc('touch_session', { p_id: ses.uid, p_sid: SID });
+  if (!error && data === false) { toast('Вход выполнен на другом устройстве — вы вышли из учётной записи'); logout(true); }
+}
+function logout(kicked) {
+  if (!kicked && ses.uid && ses.uid !== ADMIN_UID && db) db.rpc('release_session', { p_id: ses.uid, p_sid: SID });
+  pushUnsave(); ses = { ws: true }; saveS(); stopRT(); closeM(); toUsers();
+}
 
 // ===== Вход в приложение =====
 async function enter() {
+  if (ses.uid && ses.uid !== ADMIN_UID) {
+    const { data: rs } = await db.rpc('resume_session', { p_id: ses.uid, p_sid: SID });
+    if (rs === 'busy') { toast('Эта учётная запись открыта на другом устройстве'); return logout(true); }
+    if (rs === 'gone') { toast('Учётная запись удалена'); return logout(true); }
+  }
   $('start').classList.add('hidden'); $('app').classList.remove('hidden'); $('nav').classList.remove('hidden'); $('online').classList.remove('hidden');
   $('hdr').textContent = `${ses.avatar} ${ses.name} · ${RN[ses.role]}`;
-  tab = 'list'; unread = 0; startRT();
+  tab = 'list'; unread = 0; startRT(); clearInterval(hb); hb = setInterval(heartbeat, 30000); if (localStorage.getItem('pushOn') === '1') pushSync();
   try { const sn = JSON.parse(localStorage.getItem('snap') || 'null'), ms = JSON.parse(localStorage.getItem('msnap') || '[]');
     if (sn && sn.view && live(sn.view.shift_date, sn.view.shift_type)) { cur = sn.cur; view = sn.view; grace = sn.grace; pipes = sn.pipes; sorts = sn.sorts; msgs = ms; setTab(tab); } } catch (e) {}   // мгновенный показ из кэша
   await loadShift(); loadMsgs(); gamesLoad(); setTab(tab);
@@ -240,6 +260,7 @@ function startRT() {
       if (p.eventType === 'DELETE') { pipes = pipes.filter(x => x.id !== p.old.id); return refetchSoon(); }
       if (p.new.shift_id !== view.id) return;
       const id = p.new.id, cur = pipes.find(x => x.id === id);
+      if (cur && role() === 'mpd' && !isBad(cur) && isBad(p.new)) brakNotice(cur.seq, p.new.pipe_number, p.new.id);
       if (cur && uzkish() && cur.mpd2_val === '-' && p.new.mpd2_val !== '-') { flashes[id] = { t: Date.now(), k: (p.new.uzk_def !== 'N' || p.new.uzk_minus != null) ? 'flashbad' : 'flashok' }; buzz(25); }
       if (!cur || p.new.seq !== cur.dbseq) return refetchSoon();                          // вставка / удаление / смена порядка
       if (q[id] || Date.now() - (lastEdit[id] || 0) < 2500) { ['mpd1_val', 'mpd1_by', 'mpd1_at', 'mpd2_val', 'mpd2_by', 'mpd2_at'].forEach(k => cur[k] = p.new[k]); updRow(id, true); return; }   // эхо наших правок не трогаем
@@ -261,6 +282,7 @@ function startRT() {
       if (p.eventType !== 'DELETE') cal.abs.push(p.new); if (tab === 'cal' && !paint) rCal(true);
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'day_notes' }, () => { cal.fresh = false; if (tab === 'cal' && !paint) calLoad(); })
+    .on('broadcast', { event: 'banner' }, m => onBanner(m.payload))
     .on('presence', { event: 'sync' }, () => { const n = Object.keys(ch.presenceState()).length; $('online').textContent = '👥 ' + n; if (tab === 'games' && !openG) rGames(); })
     .subscribe(async s => {
       if (s === 'SUBSCRIBED') { setStatus('Онлайн', 'bg-emerald-600'); await ch.track({ uid: ses.uid, name: ses.name, avatar: ses.avatar, role: ses.role }); if (view) fetchAll(); }
@@ -268,7 +290,7 @@ function startRT() {
     });
 }
 function refetchSoon() { clearTimeout(rfT); rfT = setTimeout(() => { if (view && (touching || Object.keys(q).length)) refetchSoon(); else if (view) fetchAll(); }, 450); }
-function stopRT() { if (ch) { db.removeChannel(ch); ch = null; } clearInterval(tick); clearInterval(tick2); }
+function stopRT() { if (ch) { db.removeChannel(ch); ch = null; } clearInterval(tick); clearInterval(tick2); clearInterval(hb); }
 function onlineModal() {
   const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(Boolean);
   modal('<h3 class="font-bold text-center text-lg">Сейчас онлайн: ' + ps.length + '</h3>' + ps.map(u => `<div class="py-2 border-b">${esc(u.avatar)} <b>${esc(u.name)}</b> · ${RN[u.role] || ''}</div>`).join('') + mb('close', 'Закрыть', 'bg-slate-800 text-white'));
@@ -283,7 +305,13 @@ function patch(id, obj, local, now) {
 async function flush(id) {
   const e = q[id]; if (!e) return; clearTimeout(e.t); delete q[id];
   const { error } = await db.from('pipes').update(e.obj).eq('id', id); lastEdit[id] = Date.now();
-  if (error) { const p = pipes.find(x => x.id === id); if (p) { Object.assign(p, e.old); updRow(id); } toast('Не сохранилось: ' + error.message); buzz([100, 50, 100]); }
+  if (error) { const p = pipes.find(x => x.id === id); if (p) { Object.assign(p, e.old); updRow(id); } toast('Не сохранилось: ' + error.message); buzz([100, 50, 100]); } else if (uzkish()) brakCheck(id, e);
+}
+const isBad = p => p.uzk_def !== 'N' || p.uzk_minus != null;
+function brakCheck(id, e) {          // УЗК отметил брак (был годной) -> push всем МПД
+  const p = pipes.find(x => x.id === id); if (!p) return;
+  const was = ('uzk_def' in e.old ? e.old.uzk_def : p.uzk_def) !== 'N' || ('uzk_minus' in e.old ? e.old.uzk_minus : p.uzk_minus) != null;
+  if (isBad(p) && !was) sendPush(['mpd'], '🔴 БРАК!', `№${p.seq} · труба ${p.pipe_number}`, { tag: 'brak-' + p.id });
 }
 const flushAll = () => Object.keys(q).forEach(flush);
 const setMpd = (id, c, v) => patch(id, { [c + '_val']: v, [c + '_by']: ses.name }, { [c + '_at']: v === '-' ? null : new Date().toISOString() });
@@ -297,7 +325,8 @@ function tabsDef() {
   t.push(['stat', '📊', 'Отчёт']);
   if (uzkish()) t.push(['arch', '🗄', 'Архив']);
   if (FEATURES.cal) t.push(['cal', '🏖', 'Отпуска']);
-  if (r !== 'mpd') t.push(['games', '🎮', 'Игры']);
+  if (r === 'uzk' || r === 'admin') t.push(['ban', '📣', 'Баннеры']);
+  if (r !== 'mpd' && r !== 'uzk') t.push(['games', '🎮', 'Игры']);
   t.push(['chat', '💬', 'Чат'], ['set', '⚙️', 'Опции']);
   if (r === 'admin') t.push(['admin', '🛡', 'Админ']);
   return t;
@@ -307,7 +336,7 @@ function navUpd() {
 }
 function setTab(t) {
   tab = t; if (t === 'chat') unread = 0;
-  ['list', 'sort', 'stat', 'arch', 'cal', 'games', 'chat', 'set', 'admin'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
+  ['list', 'sort', 'stat', 'arch', 'cal', 'games', 'ban', 'chat', 'set', 'admin'].forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
   sel.on = false; sel.ids.clear(); selBar(); $('jump').classList.add('hidden');
   navUpd(); layoutVars(); applyLook(); if (t === 'games') gamesLoad(); render(true);
 }
@@ -315,7 +344,7 @@ function render(force) {
   if (!view) return;
   if (touching && !force) { needR = true; return; }          // не перерисовываем список под пальцем
   if (['arch', 'chat', 'cal', 'games'].includes(tab) && !force) return;
-  ({ list: rList, sort: rSort, stat: rStat, arch: rArch, chat: rChat, set: rSet, admin: rAdmin, cal: rCal, games: rGames })[tab]();
+  ({ list: rList, sort: rSort, stat: rStat, arch: rArch, chat: rChat, set: rSet, admin: rAdmin, cal: rCal, games: rGames, ban: rBan })[tab]();
 }
 function shiftBar() {
   const b = (s, l) => `<button data-act="vs" data-id="${s.id}" class="flex-1 py-2 rounded text-sm ${view.id === s.id ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${l}</button>`;
@@ -515,14 +544,31 @@ function reportOf(sh, arr, info) {
   return `КНК за смену ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} ${sh.shift_type === 'D' ? '(день)' : '(ночь)'}:\n` + blocks.join('\n\n');
 }
 const mpdBad = v => v === H || v === V || v === 'ЗАК';
-function mpdReport() {            // отчёт МПД: суммы по типоразмеру и марке, все плавки, повторы и пробы вместе
-  const f = x => String(x == null ? '' : x).replace('.', ','), done = pipes.filter(p => p.mpd1_val !== '-' && p.mpd2_val !== '-').length, g = new Map();
+const trub = n => n % 10 === 1 && n % 100 !== 11 ? 'труба' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'трубы' : 'труб';
+function mpdReport() {            // отчёт МПД: 3 окна по 4 часа + общий итог за смену
+  const f = x => String(x == null ? '' : x).replace('.', ','), D = view.shift_type === 'D', start = D ? 7 : 19;
+  const LB = D ? ['07:00–11:00', '11:00–15:00', '15:00–19:00'] : ['19:00–23:00', '23:00–03:00', '03:00–07:00'];
+  const hourK = iso => +new Date(iso).toLocaleString('sv-SE', { timeZone: TZ }).slice(11, 13);
+  const win = iso => iso ? Math.min(2, Math.floor(((((hourK(iso) - start) % 24) + 24) % 24) / 4)) : -1;   // отметки после конца смены — в последнее окно
+  const W = [0, 1, 2].map(() => ({ pass: 0, sizes: new Map() })), T = { pass: 0, sizes: new Map() };
+  const sz = (m, s) => { const k = [s.diameter, s.wall, s.grade].map(x => String(x || '').trim().toUpperCase()).join('|'); if (!m.has(k)) m.set(k, { label: `${f(s.diameter)}*${f(s.wall)} ${s.grade || ''}`.trim(), a: 0, b: 0, pls: new Map() }); return m.get(k); };
+  let lastPl = '';
   pipes.forEach(p => {
-    const s = sortOf(p.sort_id) || {}, k = [s.diameter, s.wall, s.grade].map(x => String(x || '').trim().toUpperCase()).join('|');
-    if (!g.has(k)) g.set(k, { s, arr: [] }); g.get(k).arr.push(p);
+    const s = sortOf(p.sort_id) || {}, own = p.plavka || s.plavka || '';
+    if (!p.kind) lastPl = own;
+    const pl = p.kind ? (lastPl || own) : own;                      // повторы и пробы идут в последнюю плавку
+    const t = sz(T.sizes, s), ends = [1, 2].map(n => ({ v: p['mpd' + n + '_val'], at: p['mpd' + n + '_at'] }));
+    ends.forEach((e, k) => {
+      if (e.v === '-') return; const bad = mpdBad(e.v); if (bad) t[k ? 'b' : 'a']++;
+      const w = win(e.at); if (w < 0) return;
+      const x = sz(W[w].sizes, s); if (!x.pls.has(pl)) x.pls.set(pl, { a: 0, b: 0 }); if (bad) x.pls.get(pl)[k ? 'b' : 'a']++;
+    });
+    if (ends[0].v !== '-' && ends[1].v !== '-') { T.pass++; if (ends[0].at && ends[1].at) W[win(new Date(ends[0].at) > new Date(ends[1].at) ? ends[0].at : ends[1].at)].pass++; }
   });
-  const blocks = [...g.values()].map(({ s, arr }) => `${f(s.diameter)}*${f(s.wall)} ${s.grade || ''}`.trim() + `\nОтсорт МПД1 ${arr.filter(p => mpdBad(p.mpd1_val)).length}\nОтсорт МПД2 ${arr.filter(p => mpdBad(p.mpd2_val)).length}`);
-  return `За смену ${sDate(view)} ${view.shift_type === 'D' ? 'день' : 'ночь'}\nПрошло ${done} труб` + (blocks.length ? '\n' + blocks.join('\n\n') : '');
+  const wt = i => { const w = W[i]; let t = `${LB[i]}\nПрошло ${w.pass} ${trub(w.pass)}`; w.sizes.forEach(x => { t += '\n' + x.label; x.pls.forEach((v, pl) => { t += `\nпл. ${pl || '—'}: МПД1 ${v.a}, МПД2 ${v.b}`; }); }); return t; };
+  let tot = `Всего за смену\nПрошло ${T.pass} ${trub(T.pass)}`; const tb = [...T.sizes.values()].map(x => `${x.label}\nОтсорт МПД1 ${x.a}\nОтсорт МПД2 ${x.b}`);
+  if (tb.length) tot += '\n' + tb.join('\n\n');
+  return `За смену ${sDate(view)} ${D ? 'день' : 'ночь'}\n\n` + [0, 1, 2].map(wt).join('\n\n') + '\n\n' + tot;
 }
 const reportText = () => role() === 'mpd' ? mpdReport() : reportOf(view, pipes, p => sortOf(p.sort_id));
 function rStat() {
@@ -610,6 +656,9 @@ function rSet() {
     <label class="flex items-center gap-3 py-2"><input type="checkbox" data-alerts="1" ${alertsOn() ? 'checked' : ''} class="w-6 h-6"> Показывать баннер на 10 секунд</label>
     <p id="alert-status" class="text-xs text-gray-500">${alertStatusText()}</p>${mb('alerttest', 'Проверить баннер', 'bg-gray-300 text-gray-800 !text-base')}
     <p class="text-xs text-gray-500 mt-1">Неофициальный источник (alerts.in.ua), задержка до 1–2 минут. Не заменяет сирены и официальные каналы.</p></div>
+  <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">🔔 Уведомления (работа в фоне)</h3><p id="push-status" class="text-sm">${pushStatusText()}</p>
+    ${localStorage.getItem('pushOn') === '1' ? mb('pushoff', 'Отключить уведомления', 'bg-gray-300 text-gray-800 !text-base') + mb('pushtest', 'Прислать тестовое уведомление', 'bg-gray-200 text-gray-800 !text-base') : mb('pushon', 'Включить уведомления', 'bg-blue-600 text-white !text-base')}
+    <p class="text-xs text-gray-500 mt-1">Уведомление приходит в шторку телефона, даже если приложение свёрнуто или закрыто. Для МПД: «БРАК!» от УЗК и баннеры. Установите приложение на главный экран — так надёжнее.</p></div>
   ${lookHTML()}
   <div class="bg-white rounded-xl p-4 shadow-sm text-sm space-y-1"><div>${esc(ses.avatar)} <b>${esc(ses.name)}</b> · ${RN[ses.role]}${ses.pin ? ' · 🔒' : ''}</div></div>` +
     (adm ? '' : mb('pin', ses.pin ? 'Изменить / убрать пароль учётки' : 'Защитить учётку паролем', 'bg-gray-300 text-gray-800')) + mb('logout', adm ? 'Выйти' : 'Сменить пользователя / роль', 'bg-gray-300 text-gray-800') +
@@ -618,7 +667,7 @@ function rSet() {
 async function rAdmin() {
   const [{ data: ex }] = await Promise.all([db.rpc('ws_exists'), loadUsers()]);
   $('v-admin').innerHTML = card('Пароль цеха', `<p class="text-sm">${ex ? '✅ задан' : '⚠️ не задан — сотрудники не смогут войти'}</p>` + mb('admwsform', ex ? 'Сменить пароль цеха' : 'Задать пароль цеха', 'bg-blue-600 text-white !text-base')) +
-    card('Учётные записи (' + st.users.length + ')', st.users.map(u => `<div class="flex items-center gap-2 py-1 border-b"><span class="flex-1 break-all">${esc(u.avatar)} <b>${esc(u.name)}</b> ${u.has_pin ? '🔒' : ''}</span>${u.has_pin ? `<button data-act="admreset" data-id="${u.id}" class="px-3 py-2 bg-gray-200 rounded-lg text-sm">🔑 сброс</button>` : ''}<button data-act="admdel" data-id="${u.id}" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm">🗑</button></div>`).join('') || '<p class="text-gray-400 text-sm">Пока нет пользователей</p>') +
+    card('Учётные записи (' + st.users.length + ')', st.users.map(u => `<div class="flex items-center gap-2 py-1 border-b"><span class="flex-1 break-all">${esc(u.avatar)} <b>${esc(u.name)}</b> ${u.has_pin ? '🔒' : ''}</span>${u.has_pin ? `<button data-act="admreset" data-id="${u.id}" class="px-3 py-2 bg-gray-200 rounded-lg text-sm">🔑 сброс</button>` : ''}<button data-act="admrel" data-id="${u.id}" class="px-3 py-2 bg-gray-200 rounded-lg text-sm" title="Освободить вход">🔓</button><button data-act="admdel" data-id="${u.id}" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm">🗑</button></div>`).join('') || '<p class="text-gray-400 text-sm">Пока нет пользователей</p>') +
     card('Пароль администратора', inp('ap-old', 'Текущий пароль', 'type="password"') + inp('ap-new', 'Новый пароль', 'type="password"') + mb('admpass', 'Изменить', 'bg-gray-300 text-gray-800 !text-base')) +
     mb('admclear', 'Очистить чат', 'bg-red-600 text-white !text-base');
 }
@@ -734,7 +783,7 @@ async function gamesLoad() {
 }
 function inviteModal(g) { modal('<h3 class="font-bold text-center text-lg">🎮 ' + esc(g.p1name) + ' зовёт сыграть</h3><p class="text-center">' + GN[g.kind] + '</p>' + mb('gacc', 'Принять', 'bg-emerald-600 text-white', `data-id="${g.id}"`) + mb('gdec', 'Отказаться', 'text-gray-500', `data-id="${g.id}"`)); }
 function gameEvt(p) {
-  if (role() === 'mpd') return;
+  if (role() === 'mpd' || role() === 'uzk') return;
   const g = p.new && p.new.id ? p.new : null; if (!g || (g.p1 !== ses.uid && g.p2 !== ses.uid)) return;
   const i = games.findIndex(x => x.id === g.id), old = i >= 0 ? games[i] : null; if (i >= 0) games[i] = g; else games.unshift(g);
   if (g.status === 'invite' && g.p2 === ses.uid && !old) { buzz([200, 100, 200]); inviteModal(g); }
@@ -770,7 +819,7 @@ function rGames() {
     }
     v.innerHTML = mb('gback', '‹ К списку игр', 'bg-gray-300 text-gray-800 !py-2 !text-base') + `<div class="font-bold px-1">${GN[g.kind]} · ${esc(opp)}</div>` + body; return;
   }
-  const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(u => u && u.uid !== ses.uid && u.uid !== ADMIN_UID && u.role !== 'mpd');
+  const ps = Object.values(ch ? ch.presenceState() : {}).map(a => a[0]).filter(u => u && u.uid !== ses.uid && u.uid !== ADMIN_UID && !['mpd', 'uzk'].includes(u.role));
   v.innerHTML = card('Позвать играть', ps.map(u => `<div class="flex items-center gap-2 py-1 border-b"><span class="flex-1">${esc(u.avatar)} <b>${esc(u.name)}</b></span><button data-act="gpick" data-u="${u.uid}" data-n="${esc(u.name)}" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">🎮 Позвать</button></div>`).join('') || '<p class="text-sm text-gray-500">Сейчас больше никого нет онлайн</p>') +
     card('Ваши игры (24 часа)', games.map(g => `<button data-act="gopen" data-id="${g.id}" class="w-full text-left py-2 border-b"><b>${GN[g.kind]}</b> · ${esc(g.p1 === ses.uid ? g.p2name : g.p1name)}<div class="text-xs text-gray-500">${gStatus(g)}</div></button>`).join('') || '<p class="text-sm text-gray-500">Пока нет игр</p>');
 }
@@ -821,11 +870,68 @@ async function calDay(d) {
     `<textarea id="n-text" rows="2" maxlength="500" placeholder="Комментарий" class="w-full border-2 p-2 rounded-lg"></textarea><div class="flex gap-2"><label class="flex-1 py-3 text-center bg-gray-200 rounded-xl font-bold cursor-pointer"><span id="n-file-l">📷 Фото</span><input id="n-file" type="file" accept="image/*" class="hidden"></label>${mb('nsend', 'Отправить', 'bg-blue-600 text-white !text-base').replace('w-full', 'flex-1')}</div>` + mb('close', 'Закрыть', 'text-gray-500'));
 }
 
+// ===== Push-уведомления, баннеры УЗК -> МПД, уведомление о браке =====
+const b64u = s => { const raw = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); };
+async function sendPush(roles, title, body, extra) {
+  const c = window.APP_CONFIG || {};
+  try {
+    const r = await fetch(c.url + '/functions/v1/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: c.key }, body: JSON.stringify(Object.assign({ roles, title, body }, extra || {})) });
+    return await r.json().catch(() => ({ error: 'HTTP ' + r.status }));
+  } catch (e) { return { error: String(e) }; }
+}
+async function pushSave(sub) { const j = sub.toJSON(); await db.rpc('push_save', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_user: ses.uid, p_name: ses.name, p_role: ses.role }); }
+async function pushSync() { try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await pushSave(sub); } catch (e) {} }
+async function pushUnsave() { try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await db.rpc('push_remove', { p_endpoint: sub.endpoint }); } catch (e) {} }
+async function pushEnable() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return toast('Этот браузер не поддерживает push-уведомления');
+  const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('Разрешение на уведомления не выдано');
+  try {
+    const reg = await navigator.serviceWorker.ready; let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
+    await pushSave(sub); localStorage.setItem('pushOn', '1'); toast('Уведомления включены'); rSet();
+  } catch (e) { toast('Не удалось включить: ' + e.message); }
+}
+async function pushOff() { await pushUnsave(); try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await sub.unsubscribe(); } catch (e) {} localStorage.removeItem('pushOn'); toast('Уведомления выключены'); rSet(); }
+function pushStatusText() {
+  if (!('Notification' in window)) return 'Браузер не поддерживает уведомления';
+  if (Notification.permission === 'denied') return '⛔ Запрещены в настройках браузера (Chrome → Настройки сайта → Уведомления)';
+  return localStorage.getItem('pushOn') === '1' && Notification.permission === 'granted' ? '✅ Включены: уведомления придут и при свёрнутом приложении' : 'Выключены';
+}
+function localNotify(title, body, tag) {     // запасной вариант без сервера: пока вкладка ещё жива в фоне
+  if (!('Notification' in window) || Notification.permission !== 'granted' || localStorage.getItem('pushOn') === '1') return;
+  navigator.serviceWorker.ready.then(r => r.showNotification(title, { body, tag, vibrate: [300, 120, 300], icon: 'icon-192.png' }));
+}
+let brakT = null;
+function brakNotice(seq, num, id) {
+  buzz([300, 120, 300]);
+  if (document.hidden) return localNotify('🔴 БРАК!', `№${seq} · труба ${num}`, 'brak-' + id);
+  const b = $('brak'); b.innerHTML = `<div class="font-bold text-xl">№${seq}</div><div class="text-sm opacity-80">труба ${esc(num)}</div><div class="text-5xl font-black text-red-600 leading-tight">БРАК!</div>`;
+  b.classList.remove('hidden'); clearTimeout(brakT); brakT = setTimeout(() => b.classList.add('hidden'), 6000);
+}
+const BANS = [['🍽', 'ОБЕД'], ['🏁', 'ПОСЛЕДНЯЯ ТРУБА'], ['☕', 'ПЕРЕРЫВ'], ['⏹', 'КОНЕЦ СМЕНЫ']];
+function rBan() {
+  $('v-ban').innerHTML = card('📣 Баннер для МПД', '<p class="text-sm text-gray-600">Нажмите: у всех МПД на весь экран появится баннер на 10 секунд, а если приложение свёрнуто — придёт уведомление.</p>' +
+    BANS.map(([i, t]) => mb('banner', i + ' ' + t, 'bg-blue-600 text-white', `data-i="${i}" data-t="${t}"`)).join('')) +
+    card('Свой текст', inp('b-text', 'Короткий текст (до 60 знаков)', 'maxlength="60"') + mb('bannercustom', '📣 Отправить', 'bg-slate-700 text-white'));
+}
+let banAt = 0;
+function sendBanner(icon, text) {
+  if (Date.now() - banAt < 4000) return toast('Подождите пару секунд'); banAt = Date.now();
+  ch && ch.send({ type: 'broadcast', event: 'banner', payload: { icon, text, from: ses.name } });
+  sendPush(['mpd'], icon + ' ' + text, 'от ' + ses.name, { tag: 'banner', ri: true }); toast('Баннер отправлен МПД'); buzz(30);
+}
+function showBanner(icon, title, sub) {
+  $('alert').classList.add('info'); $('alert-icon').textContent = icon; $('alert-title').textContent = title; $('alert-sub').textContent = sub;
+  $('alert').classList.remove('hidden'); buzz([400, 200, 400]); clearTimeout(alertTimer); alertTimer = setTimeout(hideAlert, 10000);
+}
+function onBanner(p) { if (role() !== 'mpd' || !p) return; if (document.hidden) localNotify((p.icon || '') + ' ' + p.text, 'от ' + p.from, 'banner'); else showBanner(p.icon || '📣', p.text, 'от ' + p.from); }
+
 // ===== Воздушная тревога (Дніпро) =====
 const alertsOn = () => localStorage.getItem('alerts') !== 'off';
 const hideAlert = () => { clearTimeout(alertTimer); $('alert').classList.add('hidden'); };
 function showAlert(level, test) {
   if (!alertsOn() && !test) return;
+  $('alert').classList.remove('info'); $('alert-icon').textContent = '🚨'; $('alert-title').textContent = 'Дніпро оголошена повітряна тривога!';
   $('alert-sub').textContent = test ? 'Тест баннера' : level === 'yellow' ? 'Жовтий рівень (загроза БпЛА)' : level === 'red' ? 'Червоний рівень' : '';
   $('alert').classList.remove('hidden'); buzz([400, 200, 400, 200, 800]);
   clearTimeout(alertTimer); alertTimer = setTimeout(hideAlert, 10000);
@@ -913,6 +1019,13 @@ document.addEventListener('click', async e => {
     case 'admwsform': return wsModal();
     case 'admws': { if (await admRpc('admin_ws_set', { p_new: $('a-ws').value })) { closeM(); toast('Пароль цеха сохранён'); if (tab === 'admin') rAdmin(); } return; }
     case 'admpass': { const { data, error } = await db.rpc('admin_set_pass', { p_old: $('ap-old').value, p_new: $('ap-new').value }); if (error) return toast(error.message); return toast(data ? 'Пароль администратора изменён' : 'Неверный текущий пароль или новый слишком простой'); }
+    case 'admrel': { if (await admRpc('admin_release_user', { p_id: d.id })) toast('Вход для этой учётки освобождён'); return; }
+    case 'pushon': return pushEnable();
+    case 'pushoff': return pushOff();
+    case 'pushtest': { const r = await sendPush([ses.role], '🔔 Проверка', 'Если вы видите это — уведомления работают', { onlyUser: ses.uid, tag: 'test' }); return toast(r.error ? 'Ошибка: ' + r.error : r.sent ? 'Отправлено, ждите уведомление' : 'Сервер ответил, но подписка не найдена — включите уведомления заново'); }
+    case 'banner': return sendBanner(d.i, d.t);
+    case 'bannercustom': { const t = $('b-text').value.trim(); if (!t) return toast('Введите текст'); $('b-text').value = ''; return sendBanner('📣', t); }
+    case 'brakx': $('brak').classList.add('hidden'); return;
     case 'admdel': { if (!confirm('Удалить эту учётную запись?')) return; if (await admRpc('admin_delete_user', { p_id: d.id })) { toast('Учётная запись удалена'); rAdmin(); } return; }
     case 'admreset': { if (await admRpc('admin_reset_pin', { p_id: d.id })) { toast('Пароль учётки сброшен'); rAdmin(); } return; }
     case 'admclear': { if (!confirm('Удалить всю переписку в чате?')) return; if (await admRpc('admin_clear_chat', {})) { msgs = []; toast('Чат очищен'); } return; }
@@ -920,7 +1033,7 @@ document.addEventListener('click', async e => {
     case 'delmego': { const { data, error } = await db.rpc('delete_user', { p_id: ses.uid, p_pin: $('d-pin') ? $('d-pin').value : '' }); if (error) return toast(error.message); if (!data) return toast('Неверный пароль учётки'); closeM(); toast('Учётная запись удалена'); return logout(); }
     case 'newuser': st.nm = ''; return startUI('new');
     case 'av': st.nm = $('n-name').value; st.av = d.a; return startUI('new');
-    case 'create': { const name = $('n-name').value.trim(); if (name.length < 2) return toast('Имя — минимум 2 символа'); const { data, error } = await db.rpc('register_user', { p_name: name, p_avatar: st.av }); if (error) return toast(/name_taken/.test(error.message) ? 'Такое имя уже есть' : error.message); st.pick = { id: data, name, avatar: st.av, has_pin: false }; return startUI('role'); }
+    case 'create': { const name = $('n-name').value.trim(); if (name.length < 2) return toast('Имя — минимум 2 символа'); if (st.users.some(u => normName(u.name) === normName(name)) || ['admin', 'администратор', 'трубоша', 'бот', 'bot'].includes(normName(name))) return toast('Такое имя уже есть или очень похоже на существующее'); const { data, error } = await db.rpc('register_user', { p_name: name, p_avatar: st.av }); if (error) return toast(/name_taken/.test(error.message) ? 'Такое имя уже есть' : error.message); st.pick = { id: data, name, avatar: st.av, has_pin: false }; return startUI('role'); }
     case 'pick': st.pick = st.users.find(u => u.id === d.id); return startUI('role');
     case 'role': st.role = d.r; { const pin = $('l-pin') && $('l-pin').value; startUI('role'); if (pin) $('l-pin').value = pin; return; }
     case 'login': return doLogin();
@@ -968,7 +1081,7 @@ function init() {
   window.addEventListener('resize', layoutVars);
   window.addEventListener('pagehide', flushAll); document.addEventListener('visibilitychange', () => { if (document.hidden) flushAll(); });
   if (ses.uid) enter(); else if (ses.ws) toUsers(); else startWs();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && ses.uid && cur) { rollover(); fetchAll(); loadMsgs(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ses.uid && cur) { heartbeat(); rollover(); fetchAll(); loadMsgs(); } });
   window.addEventListener('online', () => { if (ses.uid && view) fetchAll(); });
 }
 try { init(); } catch (e) { setStatus('ОШИБКА', 'bg-red-600'); showErr(e.message); }
