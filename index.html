@@ -81,7 +81,7 @@ const RA = '\u0420/\u0410', OBR = '\u041e\u0411\u0420';
 const MC = { [RA]: 'bg-red-600 text-white', [OBR]: 'bg-purple-700 text-white', '-': 'bg-gray-200 text-gray-600', N: 'bg-emerald-600 text-white', [H]: 'bg-red-600 text-white', [V]: 'bg-orange-600 text-white', 'ЗАК': 'bg-purple-700 text-white' };
 const CATS = [V, H, P, V + H, V + P, H + P, V + H + P];
 const SID = localStorage.getItem('sid') || (() => { const s = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem('sid', s); return s; })();   // «номер» этого телефона
-const VAPID = ((window.APP_CONFIG || {}).vapid) || 'BB2RgfuyUmt-RiemQ2PeoF4MPiB_bwIgNyxa_4t8zCnsKHQt_PQQRZQvh9e_3EqD1lr025rQ1HlxKOVaR1TPOII';
+const VAPID = ((window.APP_CONFIG || {}).vapid) || 'BB8zNrjhEbzt-bbWY3pmtpGfbB9KvayydNzG4NmuADjhkXG82PC2XKp6_6ttJ5sImCpFx2Qf7Sz8zL8Wi0029ZU';
 const normName = s => String(s).trim().replace(/\s+/g, ' ').toLowerCase().replace(/ё/g, 'е').replace(/[aeopcxyk]/g, c => ({ a: 'а', e: 'е', o: 'о', p: 'р', c: 'с', x: 'х', y: 'у', k: 'к' }[c]));
 const FEATURES = { cal: false };   // вкладка «Отпуска»: поставьте true, чтобы вернуть
 const ROLES = { uzk: 'УЗК', mpd: 'МПД', otk: 'ОТК' }, RN = Object.assign({ admin: 'Админ' }, ROLES);
