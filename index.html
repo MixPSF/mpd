@@ -40,6 +40,7 @@
   @keyframes flashbad { from { background-color: #f87171; border-color: #dc2626; } }
   body .bg-blue-600 { background-color: var(--ac, #2563eb); }
   body.dark .bg-sky-100 { background: #0c4a6e; } body.dark .text-sky-700 { color: #7dd3fc; } body.dark .bg-sky-200 { background: #075985; }
+  body.dark .bg-amber-100 { background: #78350f; } body.dark .text-amber-700 { color: #fcd34d; }
   body.dark .bg-purple-100 { background: #3b0764; } body.dark .text-purple-700 { color: #d8b4fe; }
   body.wp #chat-wrap { background: transparent; }
   body.mini #hdrbar, body.mini #nav, body.mini #app, body.mini #selbar, body.mini #jump, body.mini #err-box, body.mini #chat-wrap { display: none !important; }
@@ -136,7 +137,7 @@ const setTheme = t => { theme = t; localStorage.setItem('theme', t); applyTheme(
 const saveS = () => localStorage.setItem('ses4', JSON.stringify(ses));
 const role = () => ses.role;
 const uzkish = () => role() === 'uzk' || role() === 'admin';
-const can = c => role() === 'admin' ? true : role() === 'uzk' ? (c === 'uzk' || c === 'minus' || c === 'curve') : role() === 'mpd' && (c === 'mpd1' || c === 'mpd2');
+const can = c => role() === 'admin' ? true : role() === 'uzk' ? (c === 'uzk' || c === 'minus' || c === 'curve' || c === 'cut') : role() === 'mpd' && (c === 'mpd1' || c === 'mpd2');
 
 const modal = h => { $('modal').innerHTML = '<div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-2 max-h-[90vh] overflow-y-auto">' + h + '</div>'; $('modal').classList.remove('hidden'); };
 const closeM = () => $('modal').classList.add('hidden');
@@ -217,6 +218,8 @@ async function enter() {
   try { const sn = JSON.parse(localStorage.getItem('snap') || 'null'), ms = JSON.parse(localStorage.getItem('msnap') || '[]');
     if (sn && sn.view && live(sn.view.shift_date, sn.view.shift_type)) { cur = sn.cur; view = sn.view; grace = sn.grace; pipes = sn.pipes; sorts = sn.sorts; msgs = ms; setTab(tab); } } catch (e) {}   // мгновенный показ из кэша
   await loadShift(); loadMsgs(); gamesLoad(); setTab(tab);
+  const qp = new URLSearchParams(location.search);      // ярлыки на иконке: ?mini=1, ?tab=stat, ?tab=chat
+  if (qp.get('mini') === '1' && role() === 'mpd') setMini(true); else { const tp = qp.get('tab'); if (tp && tabsDef().some(t => t[0] === tp)) setTab(tp); }
   clearInterval(tick); tick = setInterval(rollover, 30000);
   clearInterval(tick2); tick2 = setInterval(() => { if (ses.uid && view && !touching && !Object.keys(q).length && ['list', 'stat', 'sort'].includes(tab)) fetchAll(); }, 60000);
 }
@@ -384,7 +387,7 @@ const mLab = v => isOtk() ? (v === 'ЗАК' ? OBR : (v === H || v === V) ? RA : 
 function cell(p, c, label, val, cls, fixed) {
   return `<button data-id="${p.id}" data-c="${c}" class="${fixed ? 'w-16 flex-none' : 'flex-1 min-w-0'} h-8 rounded-md flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[9px] opacity-80 font-normal leading-none">${label}</span><span class="font-black text-[15px] leading-tight">${esc(val)}</span></button>`;
 }
-const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">' + (mo ? 'П' : 'повтор') + '</span>' : p.kind === 'probe' && !mo ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
+const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">' + (mo ? 'П' : 'повтор') + '</span>' : p.kind === 'repm' ? '<span class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 font-bold">' + (mo ? 'П' : 'повтор МПД') + '</span>' : p.kind === 'probe' && !mo ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
   + (!mo && (p.plavka || p.party) ? `<span class="text-[10px] text-gray-500 truncate max-w-[40%]">${p.plavka ? 'пл.' + esc(p.plavka) : ''} ${p.party ? 'п.' + esc(p.party) : ''}</span>` : '');
 function jumpVis() {       // стрелка вниз: только в списке, когда он длинный и мы не у самого низа
   const j = $('jump'), near = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
@@ -408,7 +411,7 @@ function rowHTML(p) {
   if (!mo && cols.uzk) b += cell(p, 'uzk', 'УЗК', uLab(p), p.uzk_def === 'N' ? MC.N : MC[RA]);
   if (!mo && cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white');
   if (cols.mpd) b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], mo); }).join('');
-  if (cols.curve) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600');
+  if (cols.curve) { const so = sortOf(p.sort_id); b += so && so.special === 'cut' ? cell(p, 'cut', 'Подрез', p.cuts || 0, (p.cuts || 0) ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600') : cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600'); }
   const chk = sel.on ? `<span class="text-lg leading-none">${sel.ids.has(p.id) ? '☑' : '☐'}</span>` : '';
   const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide ${mo ? 'flex-none' : 'flex-1 break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}${mo ? '<span class="flex-1"></span>' : ''}`;
   const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-200 border-red-400 bad-row' : 'bg-white border-gray-200'}${sel.ids.has(p.id) ? ' ring-2 ring-blue-500' : ''}" ${flashStyle(p)}`;
@@ -450,7 +453,7 @@ lst.addEventListener('click', e => {
   const b = e.target.closest('button[data-id]'); if (!b || lf) return;
   const { id, c } = b.dataset, p = pipes.find(x => x.id === id); if (!p || !can(c)) return; buzz(20);
   if (c === 'mpd1' || c === 'mpd2') { const i = CY.indexOf(p[c + '_val']); setMpd(id, c, i >= 4 ? 'N' : CY[i + 1]); }
-  else if (c === 'uzk') uzkModal(id); else if (c === 'minus') minusModal(id); else if (c === 'curve') patch(id, { curved: !p.curved });
+  else if (c === 'uzk') uzkModal(id); else if (c === 'minus') minusModal(id); else if (c === 'curve') patch(id, { curved: !p.curved }); else if (c === 'cut') patch(id, { cuts: ((p.cuts || 0) + 1) % 3 });
 });
 function mpdModal(id, c) {
   if (!(c === 'mpd1' || c === 'mpd2') || !can(c)) return;
@@ -469,11 +472,11 @@ function minusModal(id) {
     mb('minsave', 'Сохранить', 'bg-amber-500 text-white', `data-id="${id}"`) + mb('minreset', 'N (сброс)', MC.N, `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
 }
 let curKind = '';
-const kindChips = cur => [['', 'Обычная'], ['rep', 'Повтор'], ['probe', 'Проба']].map(([k, n]) => `<button data-act="kind" data-k="${k}" class="flex-1 py-2 rounded-lg text-sm ${cur === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('');
+const kindChips = cur => [['', 'Обычная'], ['rep', 'Повтор'], ['probe', 'Проба'], ['repm', 'Повтор МПД']].map(([k, n]) => `<button data-act="kind" data-k="${k}" class="flex-1 py-2 rounded-lg text-sm ${cur === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('');
 function editModal(id) {
   const p = pipes.find(x => x.id === id); if (!p) return; curKind = p.kind || ''; const s = sortOf(p.sort_id) || {};
   modal('<h3 class="font-bold text-center text-lg">Труба №' + p.seq + '</h3>' + `<input id="e-num" value="${esc(p.pipe_number)}" class="w-full border-2 p-3 rounded-lg text-xl font-bold uppercase">` +
-    `<div id="kinds" class="flex gap-1">${kindChips(curKind)}</div>` + inp('e-pl', 'Плавка (по умолчанию: ' + (s.plavka || '—') + ')', `value="${esc(p.plavka || '')}"`) + inp('e-pa', 'Партия (по умолчанию: ' + (s.party || '—') + ')', `value="${esc(p.party || '')}"`) +
+    `<div id="kinds" class="flex flex-wrap gap-1">${kindChips(curKind)}</div>` + inp('e-pl', 'Плавка (по умолчанию: ' + (s.plavka || '—') + ')', `value="${esc(p.plavka || '')}"`) + inp('e-pa', 'Партия (по умолчанию: ' + (s.party || '—') + ')', `value="${esc(p.party || '')}"`) +
     mb('esave', 'Сохранить', 'bg-blue-600 text-white', `data-id="${id}"`) + mb('insform', '➕ Вставить трубу после этой', 'bg-emerald-600 text-white', `data-id="${id}"`) + mb('edel', 'Удалить трубу', 'bg-red-100 text-red-700', `data-id="${id}"`) + mb('close', 'Отмена', 'text-gray-500'));
 }
 function insModal(id, pre) {
@@ -482,7 +485,7 @@ function insModal(id, pre) {
   const pl = pre.pl !== undefined ? pre.pl : (p.plavka || s.plavka || ''), pa = pre.pa !== undefined ? pre.pa : (p.party || s.party || '');
   modal('<h3 class="font-bold text-center text-lg">' + (pre.msg ? esc(pre.msg) + '<br>' : '') + 'Вставить после №' + p.seq + ' (' + esc(p.pipe_number) + ')</h3>' +
     '<p class="text-xs text-gray-500">Плавка и партия подставлены от этой трубы — измените, если они другие. Для типа «Повтор» можно вводить тот же номер, что уже есть в списке (41 → повтор 41 → ещё повтор 41). Несколько номеров: через пробел или диапазоном 5525-5528.</p>' +
-    inp('i-num', 'Номер(а) трубы (обязательно)', 'autocapitalize="characters"') + `<div id="kinds" class="flex gap-1">${kindChips(curKind)}</div>` +
+    inp('i-num', 'Номер(а) трубы (обязательно)', 'autocapitalize="characters"') + `<div id="kinds" class="flex flex-wrap gap-1">${kindChips(curKind)}</div>` +
     inp('i-pl', 'Плавка', `value="${esc(pl)}"`) + inp('i-pa', 'Партия', `value="${esc(pa)}"`) +
     mb('insgo', 'Вставить', 'bg-emerald-600 text-white', `data-id="${id}"`) + mb('close', 'Готово', 'text-gray-500'));
   setTimeout(() => $('i-num').focus(), 50);
@@ -505,7 +508,7 @@ function rSort() {
   sorts.forEach(s => {
     const ps = pipes.filter(p => p.sort_id === s.id);
     h += `<div class="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2"><div class="text-sm"><div class="font-bold">${esc(sLabel(s))}</div>
-      <div class="text-gray-500">парт. ${esc(s.party || '—')} · труб ${ps.length}${ps.length ? ' (№' + ps[0].seq + '–' + ps[ps.length - 1].seq + ')' : ''}</div></div>
+      <div class="text-gray-500">парт. ${esc(s.party || '—')} · ${s.special === 'cut' ? 'подрез' : 'кривая'} · допуск ${s.tol == null ? 12.5 : s.tol}% · труб ${ps.length}${ps.length ? ' (№' + ps[0].seq + '–' + ps[ps.length - 1].seq + ')' : ''}</div></div>
       <button data-act="sortdel" data-id="${s.id}" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm">Удалить</button></div>`;
   });
   $('v-sort').innerHTML = h;
@@ -514,8 +517,8 @@ function sortForm(next) {
   curKind = '';
   modal('<h3 class="font-bold text-center text-lg">Добавить трубы</h3>' +
     `<select id="f-sel" class="w-full border-2 p-3 rounded-lg"><option value="">➕ Новый сортамент</option>${sorts.map(s => `<option value="${s.id}">${esc(sLabel(s))}</option>`).join('')}</select>` +
-    `<div id="f-new" class="space-y-2">${inp('f-p', 'Плавка')}${inp('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"')}${inp('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"')}${inp('f-g', 'Марка стали (N80Q)')}${inp('f-n', 'Номер партии')}</div>` +
-    `<div id="f-ex" class="space-y-2" style="display:none"><p class="text-xs text-gray-500">Плавка и партия подставлены от предыдущей трубы этого сортамента — измените, если они другие.</p><div id="kinds" class="flex gap-1">${kindChips('')}</div>${inp('f-xp', 'Плавка')}${inp('f-xa', 'Партия')}</div>` +
+    `<div id="f-new" class="space-y-2">${inp('f-p', 'Плавка')}${inp('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"')}${inp('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"')}${inp('f-g', 'Марка стали (N80Q)')}${inp('f-n', 'Номер партии')}${inp('f-t', 'Допуск по стенке, % (по умолчанию 12.5)', 'inputmode="decimal"')}<select id="f-sp" class="w-full border-2 p-3 rounded-lg"><option value="curve">Учёт: Кривая</option><option value="cut">Учёт: Подрез</option></select></div>` +
+    `<div id="f-ex" class="space-y-2" style="display:none"><p class="text-xs text-gray-500">Плавка и партия подставлены от предыдущей трубы этого сортамента — измените, если они другие.</p><div id="kinds" class="flex flex-wrap gap-1">${kindChips('')}</div>${inp('f-xp', 'Плавка')}${inp('f-xa', 'Партия')}</div>` +
     '<label class="block text-xs text-gray-600">Поставить на позицию № (остальные сдвинутся вниз)</label>' + inp('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
     '<textarea id="f-nums" rows="4" placeholder="Номера: через пробел, запятую, с новой строки или диапазоном 5525-5530" class="w-full border-2 p-3 rounded-lg uppercase"></textarea><p id="f-prev" class="text-xs text-gray-500"></p>' +
     mb('sortsave', 'Добавить', 'bg-blue-600 text-white') + mb('close', 'Отмена', 'text-gray-500'));
@@ -538,11 +541,11 @@ async function sortSave() {
   const g = id => $(id).value.trim(), nums = expand(g('f-nums')), selId = g('f-sel');
   if (!nums.length) return toast('Введите номера труб');
   if (!selId && (!g('f-d') || !g('f-w'))) return toast('Нужны диаметр и стенка');
-  const have = new Set(pipes.map(p => p.pipe_number)), fresh = selId && curKind === 'rep' ? nums : nums.filter(n => !have.has(n));   // повторы — можно с теми же номерами
+  const have = new Set(pipes.map(p => p.pipe_number)), fresh = selId && ['rep', 'repm'].includes(curKind) ? nums : nums.filter(n => !have.has(n));   // повторы — можно с теми же номерами
   if (!fresh.length) return toast('Все номера уже есть в смене' + (selId ? '. Для повтора выберите тип «Повтор»' : ''));
   let sid = selId, created = null;
   if (!sid) {
-    const { data, error } = await db.from('sortaments').insert({ shift_id: view.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n') }).select().single();
+    const { data, error } = await db.from('sortaments').insert({ shift_id: view.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n'), tol: parseFloat(g('f-t').replace(',', '.')) || 12.5, special: $('f-sp').value }).select().single();
     if (error) return toast(error.message); sid = created = data.id;
   }
   const so = selId ? sorts.find(x => x.id === selId) : null, xp = selId ? g('f-xp') : '', xa = selId ? g('f-xa') : '';
@@ -596,9 +599,84 @@ function mpdReport() {            // отчёт МПД: 3 окна по 4 час
   if (tb.length) tot += '\n' + tb.join('\n\n');
   return `За смену ${sDate(view)} ${D ? 'день' : 'ночь'}\n\n` + [0, 1, 2].map(wt).join('\n\n') + '\n\n' + tot;
 }
-const reportText = () => role() === 'mpd' ? mpdReport() : reportOf(view, pipes, p => sortOf(p.sort_id));
+// ===== Отчёт УЗК как в Excel: свежие / повторные, окончательный брак, повторно МПД =====
+const PROBE_AS_REP = true;                       // пробы считаем вместе с повторными
+const FINAL_LETTERS = [V], FINAL_MINUS = true;   // «Окончательный БРАК» = повторные трубы с внутренним дефектом (В) или минусом
+const hasL = (p, l) => p.uzk_def !== 'N' && p.uzk_def.includes(l);
+const isRepP = p => p.kind === 'rep' || (PROBE_AS_REP && p.kind === 'probe');
+const pc1 = (a, b) => b ? (Math.round(a / b * 1000) / 10).toFixed(1) : '0.0';
+const nowHM = () => new Date(kNow()).toISOString().slice(11, 16);
+function uzkGrp(arr, cut) {
+  const n = arr.length, bad = arr.filter(isBad).length, ext = p => cut ? (p.cuts || 0) > 0 : !!p.curved;
+  const reasons = p => [hasL(p, V), hasL(p, H), hasL(p, P), p.uzk_minus != null, ext(p)].filter(Boolean).length;
+  const goodAll = arr.filter(p => !isBad(p) && !ext(p)).length;
+  return { n, bad, ok: n - bad, vp: arr.filter(p => hasL(p, V)).length, np: arr.filter(p => hasL(p, H)).length, pp: arr.filter(p => hasL(p, P)).length, s: arr.filter(p => p.uzk_minus != null).length,
+    extra: arr.filter(ext).length, cuts: cut ? arr.reduce((a, p) => a + (p.cuts || 0), 0) : 0, goodAll, badAll: n - goodAll, comb: arr.filter(p => reasons(p) >= 2).length };
+}
+function uzkBlock(s, arr) {
+  const cut = s.special === 'cut', rp = arr.filter(isRepP), F = uzkGrp(arr.filter(p => !p.kind), cut), R = uzkGrp(rp, cut);
+  const final = rp.filter(p => FINAL_LETTERS.some(l => hasL(p, l)) || (FINAL_MINUS && p.uzk_minus != null)).length;
+  const mk = arr.filter(p => p.kind === 'repm'), M = { n: mk.length, bad: mk.filter(p => mpdBad(p.mpd1_val) || mpdBad(p.mpd2_val)).length }; M.ok = M.n - M.bad;
+  return { label: `${s.diameter} x ${s.wall} ${s.grade || ''}`.trim(), tol: s.tol == null ? 12.5 : s.tol, cut, F, R, final, M, total: F.n + R.n + M.n, goodAll: F.goodAll + R.goodAll + M.ok, badAll: F.badAll + R.badAll + M.bad,
+    abs: arr.filter(p => !isBad(p) && !((p.cuts || 0) > 0) && p.mpd1_val === 'N' && p.mpd2_val === 'N').length };
+}
+function uzkBlocks(arr, info) {
+  const g = new Map();
+  arr.forEach(p => { const s = info(p) || {}, k = [s.diameter, s.wall, s.grade].map(x => String(x || '').trim().toUpperCase()).join('|'); if (!g.has(k)) g.set(k, { s, arr: [] }); g.get(k).arr.push(p); });
+  return [...g.values()].map(x => uzkBlock(x.s, x.arr));
+}
+function uzkText(blocks, sh, at) {
+  const L = [`КНК за смену ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} (${sh.shift_type === 'D' ? 'день' : 'ночь'}) · на ${at}:`];
+  blocks.forEach(b => {
+    const ex = b.cut ? 'Подрез' : 'Кривая';
+    L.push('', `${b.label}  ${b.tol}%`, `Всего за смену ${b.total}`, `Всего ГОДНЫХ ${b.goodAll} (${pc1(b.goodAll, b.total)}%)`, `Всего ОТСОРТОВ ${b.badAll} (${pc1(b.badAll, b.total)}%)`);
+    const sec = (t, g) => L.push('', `${t} ${g.n}`, `Отсорт (УЗК) ${g.bad} (${pc1(g.bad, g.n)}%)`, `Норма (УЗК) ${g.ok} (${pc1(g.ok, g.n)}%)`, `ВП ${g.vp}, НП ${g.np}, ПП ${g.pp}, S- ${g.s}`,
+      `${ex} ${g.extra}` + (b.cut ? `, подрезов ${g.cuts}` : ''), `Годное (УЗК + ${ex}) ${g.goodAll}`, `Отсорт (УЗК + ${ex}) ${g.badAll}`, `Совместные ${g.comb}`);
+    sec('Свежая', b.F); sec('Повторно УЗК', b.R); L.push(`Окончательный БРАК ${b.final}`, '', `Повторно МПД ${b.M.n}`, `Норма (МПД) ${b.M.ok}`, `Отсорт (МПД) ${b.M.bad}`);
+    if (b.cut) L.push('', `Абсолютно годных (УЗК + МПД) ${b.abs}`, `Подрезов всего ${b.F.cuts + b.R.cuts} (труб ${b.F.extra + b.R.extra})`);
+  });
+  return L.join('\n');
+}
+function drawBlock(b, caption) {          // картинка, похожая на таблицу из Excel
+  const W = 750, rh = 38, pad = 14, lw = 520, vw = 90, x0 = pad, xv = x0 + lw, xp = xv + vw, ex = b.cut ? 'Подрез' : 'Кривая';
+  const GR = '#bdbdd0', GR2 = '#a9a9bd', Y = '#f5e58b', GN = '#3fe03f', RD = '#e22222', GD = '#2fa046', PU = '#a98bf0', WH = '#ffffff';
+  const row = (l, v, p, lc, vc) => ({ l, v, p: p || '', lc: lc || GR, vc: vc || GR });
+  const sec = (t, g, fin) => [row(t, g.n, '', GR, GN), row('Отсорт (УЗК)', g.bad, pc1(g.bad, g.n) + '%', RD, RD), row('Норма (УЗК)', g.ok, pc1(g.ok, g.n) + '%', GD, GD), row('ВП', g.vp, '', GR, PU), row('НП', g.np, '', GR, PU), row('ПП', g.pp, '', GR, PU), row('S-', g.s, '', GR, PU),
+    row(ex, g.extra, '', GR, PU)].concat(b.cut ? [row('Подрезов (всего)', g.cuts, '', GR, PU)] : [], [row(`Годное (УЗК + ${ex})`, g.goodAll, '', GR, WH), row(`Отсорт (УЗК + ${ex})`, g.badAll, '', GR, WH), row('Совместные', g.comb, '', GR, PU)], fin ? [row('Окончательный БРАК', b.final, '', GR, PU)] : []);
+  const boxes = [[row('Всего за смену', b.total, '', GR, Y), row('Всего ГОДНЫХ', b.goodAll, pc1(b.goodAll, b.total) + '%', GR, Y), row('Всего ОТСОРТОВ', b.badAll, pc1(b.badAll, b.total) + '%', GR, Y)], sec('Свежая', b.F, false), sec('Повторно УЗК', b.R, true),
+    [row('Повторно МПД', b.M.n, '', GR2, PU), row('Норма (МПД)', b.M.ok, '', GR2, PU), row('Отсорт (МПД)', b.M.bad, '', GR2, PU)]];
+  if (b.cut) boxes.push([row('Абсолютно годных (УЗК + МПД)', b.abs, '', GR, GN)]);
+  const H0 = 34 + 46, Hh = H0 + boxes.reduce((a, x) => a + x.length * rh + 16, 0) + pad, c = document.createElement('canvas'); c.width = W; c.height = Hh;
+  const g = c.getContext('2d'); g.fillStyle = '#eef0f6'; g.fillRect(0, 0, W, Hh); g.textBaseline = 'middle';
+  g.fillStyle = '#555'; g.font = '16px Arial'; g.textAlign = 'left'; g.fillText(caption, x0, 18);
+  g.fillStyle = '#000'; g.font = 'bold 28px Arial'; g.fillText(b.label, x0, 34 + 24); g.textAlign = 'center'; g.fillText(b.tol + '%', xv + vw / 2 + 20, 34 + 24);
+  let y = H0; g.font = 'bold 23px Arial';
+  boxes.forEach(bx => {
+    const y0 = y;
+    bx.forEach(r => {
+      g.fillStyle = r.lc; g.fillRect(x0, y, lw, rh); g.fillStyle = r.vc; g.fillRect(xv, y, vw, rh); if (r.p) { g.fillStyle = GR; g.fillRect(xp, y, W - pad - xp, rh); }
+      g.fillStyle = '#111'; g.textAlign = 'left'; g.fillText(r.l, x0 + 8, y + rh / 2 + 1); g.textAlign = 'center'; g.fillText(String(r.v), xv + vw / 2, y + rh / 2 + 1); if (r.p) g.fillText(r.p, xp + (W - pad - xp) / 2, y + rh / 2 + 1);
+      y += rh;
+    });
+    g.strokeStyle = '#111'; g.lineWidth = 2.5; g.strokeRect(x0, y0, lw + vw, y - y0); y += 16;
+  });
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+async function shareImgs(arr, info, sh, at) {
+  const bl = uzkBlocks(arr, info); if (!bl.length) return toast('Нет данных для отчёта');
+  const cap = `Отчёт на ${at} · смена ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} ${sh.shift_type === 'D' ? 'день' : 'ночь'}`, files = [];
+  for (let i = 0; i < bl.length; i++) files.push(new File([await drawBlock(bl[i], cap)], `otchet-${at.replace(':', '')}-${i + 1}.png`, { type: 'image/png' }));
+  if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, title: 'Отчёт УЗК' }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  files.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); }); toast('Картинки сохранены в загрузки');
+}
+const reportText = () => role() === 'mpd' ? mpdReport() : uzkText(uzkBlocks(pipes, p => sortOf(p.sort_id)), view, nowHM());
 function rStat() {
-  $('v-stat').innerHTML = shiftBar() + (pipes.length ? `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-base" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться', 'bg-blue-600 text-white') + mb('copy', 'Копировать', 'bg-gray-300 text-gray-800') : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>');
+  if (role() === 'mpd') { $('v-stat').innerHTML = shiftBar() + (pipes.length ? `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-base" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться', 'bg-blue-600 text-white') + mb('copy', 'Копировать', 'bg-gray-300 text-gray-800') : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>'); return; }
+  $('v-stat').innerHTML = shiftBar() + (pipes.length ? '<div id="rep-imgs" class="space-y-3"></div>' + mb('shareimg', '📷 Отправить картинку (как в Excel)', 'bg-blue-600 text-white') +
+    `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-sm" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться текстом', 'bg-gray-300 text-gray-800') + mb('copy', 'Копировать текст', 'bg-gray-300 text-gray-800') : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>');
+  if (!pipes.length) return;
+  const cap = `Отчёт на ${nowHM()} · смена ${letter(view.shift_date, view.shift_type)} · ${sDate(view)} ${view.shift_type === 'D' ? 'день' : 'ночь'}`;
+  uzkBlocks(pipes, p => sortOf(p.sort_id)).forEach(b => drawBlock(b, cap).then(bl => { const i = document.createElement('img'); i.src = URL.createObjectURL(bl); i.className = 'w-full rounded-lg shadow'; const box = $('rep-imgs'); if (box) box.appendChild(i); }));
 }
 async function share(t, copyOnly) {
   if (!copyOnly && navigator.share) { try { await navigator.share({ text: t }); return; } catch (e) { if (e.name === 'AbortError') return; } }
@@ -634,7 +712,7 @@ function rArch() {
   v.innerHTML = h; if ($('a-sort')) $('a-sort').value = arch.sort;
 }
 async function archOpen(id, d, t) {
-  const [a, b] = await Promise.all([db.from('pipes').select('*, sortaments(plavka,diameter,wall,grade)').eq('shift_id', id).order('seq'), 0]);
+  const [a, b] = await Promise.all([db.from('pipes').select('*, sortaments(plavka,diameter,wall,grade,tol,special)').eq('shift_id', id).order('seq'), 0]);
   if (a.error) return toast(a.error.message);
   arch.det = { sh: { id, shift_date: d, shift_type: t }, rows: a.data.map((p, i) => Object.assign(p, { seq: i + 1 })) }; arch.q = ''; rArch();
 }
@@ -642,9 +720,9 @@ function rArchDet(v) {
   const { sh, rows } = arch.det, q = arch.q.toUpperCase();
   const f = rows.filter(p => !q || p.pipe_number.includes(q) || [p.uzk_by, p.added_by, p.mpd1_by, p.mpd2_by].some(x => x && x.toUpperCase().includes(q)));
   const mr = (n, p) => `<div>МПД ${n}: <b>${esc(mLab(p['mpd' + n + '_val']))}</b> <span class="text-gray-500">— ${esc(p['mpd' + n + '_by'] || '—')} ${hhmm(p['mpd' + n + '_at'])}</span></div>`;
-  v.innerHTML = `<div class="flex gap-2">${mb('aback', '‹ Назад', 'bg-gray-300 text-gray-800 !py-2 !text-base')}${mb('ashare', 'Отчёт', 'bg-blue-600 text-white !py-2 !text-base')}</div><div class="font-bold px-1">${sTitle(sh)}</div>
+  v.innerHTML = `<div class="flex gap-2">${mb('aback', '‹ Назад', 'bg-gray-300 text-gray-800 !py-2 !text-base')}${mb('ashare', 'Отчёт', 'bg-blue-600 text-white !py-2 !text-base')}${mb('ashareimg', '📷', 'bg-emerald-600 text-white !py-2 !text-base')}${role() === 'admin' ? mb('admshift', '🗑', 'bg-red-600 text-white !py-2 !text-base') : ''}</div><div class="font-bold px-1">${sTitle(sh)}</div>
     <input id="a-q" placeholder="Поиск: номер трубы или имя" value="${esc(arch.q)}" class="w-full border-2 p-2 rounded-lg">` +
-    f.map(p => { const s = p.sortaments || {}; return `<div class="bg-white rounded-lg p-2 shadow-sm text-sm"><div class="flex justify-between"><b>${p.seq}. ${esc(p.pipe_number)}</b><span class="text-gray-500">${esc((p.plavka || s.plavka) ? 'пл. ' + (p.plavka || s.plavka) : '')}${p.party ? ' п.' + esc(p.party) : ''}${p.kind ? ' · ' + (p.kind === 'rep' ? 'повтор' : 'проба') : ''} ${esc(s.diameter || '')}x${esc(s.wall || '')}</span></div>
+    f.map(p => { const s = p.sortaments || {}; return `<div class="bg-white rounded-lg p-2 shadow-sm text-sm"><div class="flex justify-between"><b>${p.seq}. ${esc(p.pipe_number)}</b><span class="text-gray-500">${esc((p.plavka || s.plavka) ? 'пл. ' + (p.plavka || s.plavka) : '')}${p.party ? ' п.' + esc(p.party) : ''}${p.kind ? ' · ' + ({ rep: 'повтор', probe: 'проба', repm: 'повтор МПД' }[p.kind]) : ''} ${esc(s.diameter || '')}x${esc(s.wall || '')}</span></div>
       <div>УЗК: <b>${esc(uLab(p))}</b>${p.uzk_minus != null ? ' · <b>' + esc(isOtk() ? 'S-' : 'S- ' + p.uzk_minus) + '</b>' : ''} <span class="text-gray-500">— ${esc(p.uzk_by || p.added_by || '—')} ${hhmm(p.uzk_at)}</span></div>${mr(1, p)}${mr(2, p)}</div>`; }).join('');
 }
 document.addEventListener('input', e => { if (e.target.id === 'a-q') { arch.q = e.target.value; const pos = e.target.selectionStart; rArchDet($('v-arch')); const n = $('a-q'); n.focus(); n.setSelectionRange(pos, pos); } });
@@ -676,7 +754,7 @@ function alertStatusText() {
 function rSet() {
   const ck = (k, n) => `<label class="flex items-center gap-3 py-2"><input type="checkbox" data-col="${k}" ${cols[k] ? 'checked' : ''} class="w-6 h-6"> ${n}</label>`;
   const adm = role() === 'admin';
-  $('v-set').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">Показывать колонки (на этом телефоне)</h3>${ck('uzk', 'УЗК — отсорт')}${ck('minus', 'УЗК — минус (стенка)')}${ck('mpd', 'МПД')}${ck('curve', 'Кривая')}</div>
+  $('v-set').innerHTML = `<div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">Показывать колонки (на этом телефоне)</h3>${ck('uzk', 'УЗК — отсорт')}${ck('minus', 'УЗК — минус (стенка)')}${ck('mpd', 'МПД')}${ck('curve', 'Кривая / подрез')}</div>
   <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-2">Режим</h3><div class="grid grid-cols-3 gap-1 text-center text-sm">${[['auto', '🌓 Авто'], ['day', '☀️ День'], ['night', '🌙 Ночь']].map(([k, n]) => `<button data-act="themeset" data-v="${k}" class="py-2 rounded ${theme === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('')}</div><p class="text-xs text-gray-500 mt-1">Авто: тёмная тема в ночную смену (19–07)</p></div>
   <div class="bg-white rounded-xl p-4 shadow-sm"><h3 class="font-bold mb-1">🚨 Воздушная тревога (Дніпро)</h3>
     <label class="flex items-center gap-3 py-2"><input type="checkbox" data-alerts="1" ${alertsOn() ? 'checked' : ''} class="w-6 h-6"> Показывать баннер на 10 секунд</label>
@@ -694,6 +772,7 @@ async function rAdmin() {
   const [{ data: ex }] = await Promise.all([db.rpc('ws_exists'), loadUsers()]);
   $('v-admin').innerHTML = card('Пароль цеха', `<p class="text-sm">${ex ? '✅ задан' : '⚠️ не задан — сотрудники не смогут войти'}</p>` + mb('admwsform', ex ? 'Сменить пароль цеха' : 'Задать пароль цеха', 'bg-blue-600 text-white !text-base')) +
     card('Учётные записи (' + st.users.length + ')', st.users.map(u => `<div class="flex items-center gap-2 py-1 border-b"><span class="flex-1 break-all">${esc(u.avatar)} <b>${esc(u.name)}</b> ${u.has_pin ? '🔒' : ''}</span>${u.has_pin ? `<button data-act="admreset" data-id="${u.id}" class="px-3 py-2 bg-gray-200 rounded-lg text-sm">🔑 сброс</button>` : ''}<button data-act="admrel" data-id="${u.id}" class="px-3 py-2 bg-gray-200 rounded-lg text-sm" title="Освободить вход">🔓</button><button data-act="admdel" data-id="${u.id}" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm">🗑</button></div>`).join('') || '<p class="text-gray-400 text-sm">Пока нет пользователей</p>') +
+    card('Архив смен', '<p class="text-sm text-gray-600">Две последние смены (текущая и прошлая) не удаляются.</p>' + inp('ar-before', 'Удалить смены раньше даты', `type="date" value="${addDays(curKey().date, -30)}"`) + mb('admarch', 'Удалить смены раньше даты', 'bg-red-100 text-red-700 !text-base') + mb('admarchall', 'Удалить весь архив', 'bg-red-600 text-white !text-base')) +
     card('Пароль администратора', inp('ap-old', 'Текущий пароль', 'type="password"') + inp('ap-new', 'Новый пароль', 'type="password"') + mb('admpass', 'Изменить', 'bg-gray-300 text-gray-800 !text-base')) +
     mb('admclear', 'Очистить чат', 'bg-red-600 text-white !text-base');
 }
@@ -997,12 +1076,12 @@ document.addEventListener('click', async e => {
       sel.on = false; sel.ids.clear(); selBar(); toast('Удалено: ' + ids.length); return fetchAll();
     }
     case 'kind': curKind = d.k; $('kinds').innerHTML = kindChips(curKind); return;
-    case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (curKind !== 'rep' && pipes.some(x => x.id !== d.id && x.pipe_number === v && x.kind !== 'rep')) return toast('Такой номер уже есть. Для повтора выберите тип «Повтор»'); patch(d.id, { pipe_number: v, kind: curKind || null, plavka: $('e-pl').value.trim() || null, party: $('e-pa').value.trim() || null }); return closeM(); }
+    case 'esave': { const v = $('e-num').value.trim().toUpperCase(); if (!v) return; if (!['rep', 'repm'].includes(curKind) && pipes.some(x => x.id !== d.id && x.pipe_number === v && !['rep', 'repm'].includes(x.kind))) return toast('Такой номер уже есть. Для повтора выберите тип «Повтор»'); patch(d.id, { pipe_number: v, kind: curKind || null, plavka: $('e-pl').value.trim() || null, party: $('e-pa').value.trim() || null }); return closeM(); }
     case 'insform': return insModal(d.id);
     case 'insgo': {
       const p = pipes.find(x => x.id === d.id), nums = expand($('i-num').value); if (!p || !nums.length) return toast('Введите номер трубы');
       const s = sortOf(p.sort_id) || {}, pl = $('i-pl').value.trim(), pa = $('i-pa').value.trim(), kind = curKind;
-      const have = new Set(pipes.map(x => x.pipe_number)), fresh = kind === 'rep' ? nums : nums.filter(n => !have.has(n)); if (!fresh.length) return toast('Эти номера уже есть в смене. Для повтора выберите тип «Повтор»');
+      const have = new Set(pipes.map(x => x.pipe_number)), fresh = ['rep', 'repm'].includes(kind) ? nums : nums.filter(n => !have.has(n)); if (!fresh.length) return toast('Эти номера уже есть в смене. Для повтора выберите тип «Повтор»');
       let last = null, done = 0;
       for (let i = 0; i < fresh.length; i++) {
         const { data, error } = await db.rpc('insert_pipe', { p_shift: view.id, p_sort: p.sort_id, p_after: p.seq + i, p_number: fresh[i], p_plavka: pl === (s.plavka || '') ? '' : pl, p_party: pa === (s.party || '') ? '' : pa, p_kind: kind, p_by: ses.name });
@@ -1051,6 +1130,13 @@ document.addEventListener('click', async e => {
     case 'admws': { if (await admRpc('admin_ws_set', { p_new: $('a-ws').value })) { closeM(); toast('Пароль цеха сохранён'); if (tab === 'admin') rAdmin(); } return; }
     case 'admpass': { const { data, error } = await db.rpc('admin_set_pass', { p_old: $('ap-old').value, p_new: $('ap-new').value }); if (error) return toast(error.message); return toast(data ? 'Пароль администратора изменён' : 'Неверный текущий пароль или новый слишком простой'); }
     case 'mini': return setMini(!mini.on);
+    case 'admarch': case 'admarchall': {
+      const all = d.act === 'admarchall', d0 = all ? null : $('ar-before').value; if (!all && !d0) return toast('Выберите дату');
+      if (!confirm(all ? 'Удалить ВЕСЬ архив смен? Это необратимо.' : 'Удалить из архива все смены раньше ' + fd(d0) + '? Это необратимо.')) return;
+      const { data, error } = await db.rpc('admin_clear_archive', { p_token: ses.adm, p_before: d0 }); if (error) return toast(error.message);
+      if (data < 0) return toast('Сессия администратора устарела — войдите заново'); arch.rows = null; arch.det = null; return toast('Удалено смен: ' + data);
+    }
+    case 'admshift': { if (!confirm('Удалить эту смену из архива?')) return; if (await admRpc('admin_delete_shift', { p_id: arch.det.sh.id })) { arch.det = null; arch.rows = null; toast('Смена удалена'); rArch(); } return; }
     case 'admrel': { if (await admRpc('admin_release_user', { p_id: d.id })) toast('Вход для этой учётки освобождён'); return; }
     case 'pushon': return pushEnable();
     case 'pushoff': return pushOff();
@@ -1086,13 +1172,15 @@ document.addEventListener('click', async e => {
     case 'sortform': return sortForm(d.next);
     case 'sortsave': return sortSave();
     case 'sortdel': { if (!confirm('Удалить сортамент вместе со всеми его трубами?')) return; const { error } = await db.rpc('delete_sortament', { p_id: d.id }); if (error) return toast(error.message); return fetchAll(); }
+    case 'shareimg': return shareImgs(pipes, p => sortOf(p.sort_id), view, nowHM());
     case 'share': return share(reportText(), false);
     case 'copy': return share(reportText(), true);
     case 'af': readArch(); arch[d.k] = d.v; return rArch();
     case 'aload': return archLoad();
     case 'aopen': return archOpen(d.id, d.d, d.t);
     case 'aback': arch.det = null; return rArch();
-    case 'ashare': return share(reportOf(arch.det.sh, arch.det.rows, p => p.sortaments), false);
+    case 'ashare': return share(uzkText(uzkBlocks(arch.det.rows, p => p.sortaments), arch.det.sh, arch.det.sh.shift_type === 'D' ? '19:00' : '07:00'), false);
+    case 'ashareimg': return shareImgs(arch.det.rows, p => p.sortaments, arch.det.sh, arch.det.sh.shift_type === 'D' ? '19:00' : '07:00');
     case 'send': return sendMsg();
     case 'pin': return pinModal();
     case 'pinsave': { const { data, error } = await db.rpc('set_pin', { p_id: ses.uid, p_new: $('p-new').value, p_old: $('p-old') ? $('p-old').value : '' }); if (error) return toast(error.message); if (!data) return toast('Неверный текущий пароль'); ses.pin = !!$('p-new').value; saveS(); closeM(); toast(ses.pin ? 'Пароль установлен' : 'Пароль убран'); return render(true); }
