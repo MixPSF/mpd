@@ -88,7 +88,7 @@ const CATS = [V, H, P, V + H, V + P, H + P, V + H + P];
 const SID = localStorage.getItem('sid') || (() => { const s = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem('sid', s); return s; })();   // «номер» этого телефона
 const VAPID = ((window.APP_CONFIG || {}).vapid) || 'BB8zNrjhEbzt-bbWY3pmtpGfbB9KvayydNzG4NmuADjhkXG82PC2XKp6_6ttJ5sImCpFx2Qf7Sz8zL8Wi0029ZU';
 const normName = s => String(s).trim().replace(/\s+/g, ' ').toLowerCase().replace(/ё/g, 'е').replace(/[aeopcxyk]/g, c => ({ a: 'а', e: 'е', o: 'о', p: 'р', c: 'с', x: 'х', y: 'у', k: 'к' }[c]));
-const FEATURES = { cal: false };   // вкладка «Отпуска»: поставьте true, чтобы вернуть
+const FEATURES = { cal: false, mini: false };   // cal — «Отпуска», mini — мини-окно МПД   // вкладка «Отпуска»: поставьте true, чтобы вернуть
 const ROLES = { uzk: 'УЗК', mpd: 'МПД', otk: 'ОТК' }, RN = Object.assign({ admin: 'Админ' }, ROLES);
 const AVS = ['😀', '😎', '🤠', '👷', '🦊', '🐻', '🐯', '🦁', '🐸', '🐼', '🦉', '🚀', '⚙️', '🔧', '⭐', '🔥'];
 // Бригады: день D(d) идёт по кругу Б,А,В,Г с 17.11.2026; ночь d→d+1 работает та же бригада, что была днём d-1
@@ -137,7 +137,9 @@ const setTheme = t => { theme = t; localStorage.setItem('theme', t); applyTheme(
 const saveS = () => localStorage.setItem('ses4', JSON.stringify(ses));
 const role = () => ses.role;
 const uzkish = () => role() === 'uzk' || role() === 'admin';
-const can = c => role() === 'admin' ? true : role() === 'uzk' ? (c === 'uzk' || c === 'minus' || c === 'curve' || c === 'cut') : role() === 'mpd' && (c === 'mpd1' || c === 'mpd2');
+const uzkMode = () => role() === 'uzk' ? (localStorage.getItem('uzkMode') === 'view' ? 'view' : 'input') : 'full';   // 1-й оператор: ввод; 2-й: только просмотр
+const viewOnly = () => uzkMode() === 'view';
+const can = c => viewOnly() ? false : role() === 'admin' ? true : role() === 'uzk' ? (c === 'uzk' || c === 'minus' || c === 'curve' || c === 'cut') : role() === 'mpd' && (c === 'mpd1' || c === 'mpd2');
 
 const modal = h => { $('modal').innerHTML = '<div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-2 max-h-[90vh] overflow-y-auto">' + h + '</div>'; $('modal').classList.remove('hidden'); };
 const closeM = () => $('modal').classList.add('hidden');
@@ -213,13 +215,13 @@ async function enter() {
     if (rs === 'gone') { toast('Учётная запись удалена'); return logout(true); }
   }
   $('start').classList.add('hidden'); $('app').classList.remove('hidden'); $('nav').classList.remove('hidden'); $('online').classList.remove('hidden');
-  $('hdr').textContent = `${ses.avatar} ${ses.name} · ${RN[ses.role]}`; $('miniBtn').classList.toggle('hidden', ses.role !== 'mpd');
+  $('hdr').textContent = `${ses.avatar} ${ses.name} · ${RN[ses.role]}`; $('miniBtn').classList.toggle('hidden', ses.role !== 'mpd' || !FEATURES.mini);
   tab = 'list'; unread = 0; startRT(); clearInterval(hb); hb = setInterval(heartbeat, 30000); if (localStorage.getItem('pushOn') === '1') pushSync();
   try { const sn = JSON.parse(localStorage.getItem('snap') || 'null'), ms = JSON.parse(localStorage.getItem('msnap') || '[]');
     if (sn && sn.view && live(sn.view.shift_date, sn.view.shift_type)) { cur = sn.cur; view = sn.view; grace = sn.grace; pipes = sn.pipes; sorts = sn.sorts; msgs = ms; setTab(tab); } } catch (e) {}   // мгновенный показ из кэша
   await loadShift(); loadMsgs(); gamesLoad(); setTab(tab);
   const qp = new URLSearchParams(location.search);      // ярлыки на иконке: ?mini=1, ?tab=stat, ?tab=chat
-  if (qp.get('mini') === '1' && role() === 'mpd') setMini(true); else { const tp = qp.get('tab'); if (tp && tabsDef().some(t => t[0] === tp)) setTab(tp); }
+  if (FEATURES.mini && qp.get('mini') === '1' && role() === 'mpd') setMini(true); else { const tp = qp.get('tab'); if (tp && tabsDef().some(t => t[0] === tp)) setTab(tp); }
   clearInterval(tick); tick = setInterval(rollover, 30000);
   clearInterval(tick2); tick2 = setInterval(() => { if (ses.uid && view && !touching && !Object.keys(q).length && ['list', 'stat', 'sort'].includes(tab)) fetchAll(); }, 60000);
 }
@@ -331,7 +333,7 @@ $('mini').addEventListener('click', e => {
   buzz(20); const i = CY.indexOf(p[c + '_val']); setMpd(p.id, c, i >= 4 ? 'N' : CY[i + 1]);
 });
 window.addEventListener('resize', () => {        // маленькое «плавающее» окно Android -> мини-режим автоматически
-  if (role() !== 'mpd' || !ses.uid) return; const small = window.innerHeight < 460 || window.innerWidth < 300;
+  if (!FEATURES.mini || role() !== 'mpd' || !ses.uid) return; const small = window.innerHeight < 460 || window.innerWidth < 300;
   if (small && !mini.on) setMini(true, true); else if (!small && mini.on && mini.auto) setMini(false);
 });
 const isBad = p => p.uzk_def !== 'N' || p.uzk_minus != null;
@@ -348,7 +350,7 @@ const sortOf = id => sorts.find(s => s.id === id);
 // ===== Вкладки =====
 function tabsDef() {
   const r = role(), t = [['list', '📋', 'Список']];
-  if (uzkish()) t.push(['sort', '➕', 'Сортамент']);
+  if (uzkish() && !viewOnly()) t.push(['sort', '➕', 'Сортамент']);
   t.push(['stat', '📊', 'Отчёт']);
   if (uzkish()) t.push(['arch', '🗄', 'Архив']);
   if (FEATURES.cal) t.push(['cal', '🏖', 'Отпуска']);
@@ -385,7 +387,7 @@ const uLab = p => isOtk() ? (p.uzk_def === 'N' ? 'N' : RA) : p.uzk_def;
 const mnLab = p => p.uzk_minus == null ? 'N' : (isOtk() ? 'S-' : p.uzk_minus);
 const mLab = v => isOtk() ? (v === 'ЗАК' ? OBR : (v === H || v === V) ? RA : v) : v;
 function cell(p, c, label, val, cls, fixed) {
-  return `<button data-id="${p.id}" data-c="${c}" class="${fixed ? 'w-16 flex-none' : 'flex-1 min-w-0'} h-8 rounded-md flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : 'opacity-60'}"><span class="text-[9px] opacity-80 font-normal leading-none">${label}</span><span class="font-black text-[15px] leading-tight">${esc(val)}</span></button>`;
+  return `<button data-id="${p.id}" data-c="${c}" class="${fixed ? 'w-16 flex-none' : 'flex-1 min-w-0'} h-8 rounded-md flex flex-col items-center justify-center ${cls} ${can(c) ? 'active:scale-95' : (viewOnly() ? '' : 'opacity-60')}"><span class="text-[9px] opacity-80 font-normal leading-none">${label}</span><span class="font-black text-[15px] leading-tight">${esc(val)}</span></button>`;
 }
 const tags = (p, mo) => (p.kind === 'rep' ? '<span class="text-[10px] px-1 rounded bg-sky-100 text-sky-700 font-bold">' + (mo ? 'П' : 'повтор') + '</span>' : p.kind === 'repm' ? '<span class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 font-bold">' + (mo ? 'П' : 'повтор МПД') + '</span>' : p.kind === 'probe' && !mo ? '<span class="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-bold">проба</span>' : '')
   + (!mo && (p.plavka || p.party) ? `<span class="text-[10px] text-gray-500 truncate max-w-[40%]">${p.plavka ? 'пл.' + esc(p.plavka) : ''} ${p.party ? 'п.' + esc(p.party) : ''}</span>` : '');
@@ -410,16 +412,17 @@ function rowHTML(p) {
   let b = '';
   if (!mo && cols.uzk) b += cell(p, 'uzk', 'УЗК', uLab(p), p.uzk_def === 'N' ? MC.N : MC[RA]);
   if (!mo && cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white');
-  if (cols.mpd) b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], mo); }).join('');
+  if (cols.mpd && uzkMode() !== 'input') b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], mo); }).join('');
   if (cols.curve) { const so = sortOf(p.sort_id); b += so && so.special === 'cut' ? cell(p, 'cut', 'Подрез', p.cuts || 0, (p.cuts || 0) ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600') : cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600'); }
   const chk = sel.on ? `<span class="text-lg leading-none">${sel.ids.has(p.id) ? '☑' : '☐'}</span>` : '';
-  const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span data-edit="${p.id}" class="font-black text-base leading-5 text-slate-800 tracking-wide ${mo ? 'flex-none' : 'flex-1 break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}${mo ? '<span class="flex-1"></span>' : ''}`;
+  const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span class="font-black text-base leading-5 text-slate-800 tracking-wide ${mo ? 'flex-none' : 'flex-1 break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}${mo ? '<span class="flex-1"></span>' : ''}`;
   const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-200 border-red-400 bad-row' : 'bg-white border-gray-200'}${sel.ids.has(p.id) ? ' ring-2 ring-blue-500' : ''}" ${flashStyle(p)}`;
   return mo ? `<div ${at}><div class="flex items-center gap-1">${num}${b}</div></div>`
-    : `<div ${at}><div class="flex items-center gap-1.5 mb-0.5">${num}</div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
+    : `<div ${at}><div data-edit="${p.id}" class="flex items-center gap-1.5 py-1 mb-0.5">${num}</div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
 }
 function rList() {
-  let last = null, h = shiftBar() + (uzkish() && !sel.on && pipes.length ? '<div class="flex justify-end"><button data-act="seltoggle" class="px-3 py-1 rounded-lg bg-gray-200 text-sm">☑ Выбрать несколько</button></div>' : '');
+  const uzkSw = role() === 'uzk' ? `<div class="flex gap-1">${[['input', '✏️ 1-й оператор (ввод)'], ['view', '👁 2-й оператор (просмотр)']].map(([k, n]) => `<button data-act="uzkmode" data-v="${k}" class="flex-1 py-2 rounded-lg text-sm ${(viewOnly() ? 'view' : 'input') === k ? 'bg-blue-600 text-white font-bold' : 'bg-gray-200'}">${n}</button>`).join('')}</div>` : '';
+  let last = null, h = shiftBar() + uzkSw + (uzkish() && !viewOnly() && !sel.on && pipes.length ? '<div class="flex justify-end"><button data-act="seltoggle" class="px-3 py-1 rounded-lg bg-gray-200 text-sm">☑ Выбрать несколько</button></div>' : '');
   if (!pipes.length) h += '<p class="text-center text-gray-400 py-8">Список пуст' + (uzkish() ? '. Добавьте трубы во вкладке «Сортамент».' : '.') + '</p>';
   pipes.forEach(p => {
     if (p.sort_id !== last) {
@@ -428,7 +431,7 @@ function rList() {
     }
     h += rowHTML(p);
   });
-  if (uzkish() && pipes.length && !sel.on) h += '<button data-act="addend" class="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold">➕ Добавить трубы в конец списка</button>';
+  if (uzkish() && !viewOnly() && pipes.length && !sel.on) h += '<button data-act="addend" class="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold">➕ Добавить трубы в конец списка</button>';
   $('v-list').innerHTML = h; jumpVis();
 }
 function updRow(id, rt) {                                     // перерисовать только одну строку
@@ -449,7 +452,7 @@ lst.addEventListener('pointerdown', e => {
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => lst.addEventListener(ev, endTouch));
 lst.addEventListener('click', e => {
   if (sel.on) { const r = e.target.closest('[data-row]'); if (r) selToggle(r.dataset.row); return; }
-  const n = e.target.closest('[data-edit]'); if (n) { if (uzkish()) editModal(n.dataset.edit); return; }
+  const n = e.target.closest('[data-edit]'); if (n) { if (uzkish() && !viewOnly()) editModal(n.dataset.edit); return; }
   const b = e.target.closest('button[data-id]'); if (!b || lf) return;
   const { id, c } = b.dataset, p = pipes.find(x => x.id === id); if (!p || !can(c)) return; buzz(20);
   if (c === 'mpd1' || c === 'mpd2') { const i = CY.indexOf(p[c + '_val']); setMpd(id, c, i >= 4 ? 'N' : CY[i + 1]); }
@@ -508,7 +511,7 @@ function rSort() {
   sorts.forEach(s => {
     const ps = pipes.filter(p => p.sort_id === s.id);
     h += `<div class="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2"><div class="text-sm"><div class="font-bold">${esc(sLabel(s))}</div>
-      <div class="text-gray-500">парт. ${esc(s.party || '—')} · ${s.special === 'cut' ? 'подрез' : 'кривая'} · допуск ${s.tol == null ? 12.5 : s.tol}% · труб ${ps.length}${ps.length ? ' (№' + ps[0].seq + '–' + ps[ps.length - 1].seq + ')' : ''}</div></div>
+      <div class="text-gray-500">парт. ${esc(s.party || '—')} · ${s.special === 'cut' ? 'подрез' : 'кривая'} · труб ${ps.length}${ps.length ? ' (№' + ps[0].seq + '–' + ps[ps.length - 1].seq + ')' : ''}</div></div>
       <button data-act="sortdel" data-id="${s.id}" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm">Удалить</button></div>`;
   });
   $('v-sort').innerHTML = h;
@@ -517,7 +520,7 @@ function sortForm(next) {
   curKind = '';
   modal('<h3 class="font-bold text-center text-lg">Добавить трубы</h3>' +
     `<select id="f-sel" class="w-full border-2 p-3 rounded-lg"><option value="">➕ Новый сортамент</option>${sorts.map(s => `<option value="${s.id}">${esc(sLabel(s))}</option>`).join('')}</select>` +
-    `<div id="f-new" class="space-y-2">${inp('f-p', 'Плавка')}${inp('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"')}${inp('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"')}${inp('f-g', 'Марка стали (N80Q)')}${inp('f-n', 'Номер партии')}${inp('f-t', 'Допуск по стенке, % (по умолчанию 12.5)', 'inputmode="decimal"')}<select id="f-sp" class="w-full border-2 p-3 rounded-lg"><option value="curve">Учёт: Кривая</option><option value="cut">Учёт: Подрез</option></select></div>` +
+    `<div id="f-new" class="space-y-2">${inp('f-p', 'Плавка')}${inp('f-d', 'Диаметр, мм (339.7)', 'inputmode="decimal"')}${inp('f-w', 'Толщина стенки (10.92)', 'inputmode="decimal"')}${inp('f-g', 'Марка стали (N80Q)')}${inp('f-n', 'Номер партии')}<select id="f-sp" class="w-full border-2 p-3 rounded-lg"><option value="curve">Учёт: Кривая</option><option value="cut">Учёт: Подрез</option></select></div>` +
     `<div id="f-ex" class="space-y-2" style="display:none"><p class="text-xs text-gray-500">Плавка и партия подставлены от предыдущей трубы этого сортамента — измените, если они другие.</p><div id="kinds" class="flex flex-wrap gap-1">${kindChips('')}</div>${inp('f-xp', 'Плавка')}${inp('f-xa', 'Партия')}</div>` +
     '<label class="block text-xs text-gray-600">Поставить на позицию № (остальные сдвинутся вниз)</label>' + inp('f-s', '', `type="number" inputmode="numeric" value="${next}"`) +
     '<textarea id="f-nums" rows="4" placeholder="Номера: через пробел, запятую, с новой строки или диапазоном 5525-5530" class="w-full border-2 p-3 rounded-lg uppercase"></textarea><p id="f-prev" class="text-xs text-gray-500"></p>' +
@@ -545,7 +548,7 @@ async function sortSave() {
   if (!fresh.length) return toast('Все номера уже есть в смене' + (selId ? '. Для повтора выберите тип «Повтор»' : ''));
   let sid = selId, created = null;
   if (!sid) {
-    const { data, error } = await db.from('sortaments').insert({ shift_id: view.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n'), tol: parseFloat(g('f-t').replace(',', '.')) || 12.5, special: $('f-sp').value }).select().single();
+    const { data, error } = await db.from('sortaments').insert({ shift_id: view.id, plavka: g('f-p'), diameter: g('f-d'), wall: g('f-w'), grade: g('f-g'), party: g('f-n'), special: $('f-sp').value }).select().single();
     if (error) return toast(error.message); sid = created = data.id;
   }
   const so = selId ? sorts.find(x => x.id === selId) : null, xp = selId ? g('f-xp') : '', xa = selId ? g('f-xa') : '';
@@ -632,7 +635,7 @@ function uzkText(blocks, sh, at) {
     L.push('', `${b.label}  ${b.tol}%`, `Всего за смену ${b.total}`, `Всего ГОДНЫХ ${b.goodAll} (${pc1(b.goodAll, b.total)}%)`, `Всего ОТСОРТОВ ${b.badAll} (${pc1(b.badAll, b.total)}%)`);
     const sec = (t, g) => L.push('', `${t} ${g.n}`, `Отсорт (УЗК) ${g.bad} (${pc1(g.bad, g.n)}%)`, `Норма (УЗК) ${g.ok} (${pc1(g.ok, g.n)}%)`, `ВП ${g.vp}, НП ${g.np}, ПП ${g.pp}, S- ${g.s}`,
       `${ex} ${g.extra}` + (b.cut ? `, подрезов ${g.cuts}` : ''), `Годное (УЗК + ${ex}) ${g.goodAll}`, `Отсорт (УЗК + ${ex}) ${g.badAll}`, `Совместные ${g.comb}`);
-    sec('Свежая', b.F); sec('Повторно УЗК', b.R); L.push(`Окончательный БРАК ${b.final}`, '', `Повторно МПД ${b.M.n}`, `Норма (МПД) ${b.M.ok}`, `Отсорт (МПД) ${b.M.bad}`);
+    sec('Первично УЗК', b.F); sec('Повторно УЗК', b.R); L.push(`Окончательный БРАК ${b.final}`, '', `Повторно МПД ${b.M.n}`, `Норма (МПД) ${b.M.ok}`, `Отсорт (МПД) ${b.M.bad}`);
     if (b.cut) L.push('', `Абсолютно годных (УЗК + МПД) ${b.abs}`, `Подрезов всего ${b.F.cuts + b.R.cuts} (труб ${b.F.extra + b.R.extra})`);
   });
   return L.join('\n');
@@ -643,7 +646,7 @@ function drawBlock(b, caption) {          // картинка, похожая н
   const row = (l, v, p, lc, vc) => ({ l, v, p: p || '', lc: lc || GR, vc: vc || GR });
   const sec = (t, g, fin) => [row(t, g.n, '', GR, GN), row('Отсорт (УЗК)', g.bad, pc1(g.bad, g.n) + '%', RD, RD), row('Норма (УЗК)', g.ok, pc1(g.ok, g.n) + '%', GD, GD), row('ВП', g.vp, '', GR, PU), row('НП', g.np, '', GR, PU), row('ПП', g.pp, '', GR, PU), row('S-', g.s, '', GR, PU),
     row(ex, g.extra, '', GR, PU)].concat(b.cut ? [row('Подрезов (всего)', g.cuts, '', GR, PU)] : [], [row(`Годное (УЗК + ${ex})`, g.goodAll, '', GR, WH), row(`Отсорт (УЗК + ${ex})`, g.badAll, '', GR, WH), row('Совместные', g.comb, '', GR, PU)], fin ? [row('Окончательный БРАК', b.final, '', GR, PU)] : []);
-  const boxes = [[row('Всего за смену', b.total, '', GR, Y), row('Всего ГОДНЫХ', b.goodAll, pc1(b.goodAll, b.total) + '%', GR, Y), row('Всего ОТСОРТОВ', b.badAll, pc1(b.badAll, b.total) + '%', GR, Y)], sec('Свежая', b.F, false), sec('Повторно УЗК', b.R, true),
+  const boxes = [[row('Всего за смену', b.total, '', GR, Y), row('Всего ГОДНЫХ', b.goodAll, pc1(b.goodAll, b.total) + '%', GR, Y), row('Всего ОТСОРТОВ', b.badAll, pc1(b.badAll, b.total) + '%', GR, Y)], sec('Первично УЗК', b.F, false), sec('Повторно УЗК', b.R, true),
     [row('Повторно МПД', b.M.n, '', GR2, PU), row('Норма (МПД)', b.M.ok, '', GR2, PU), row('Отсорт (МПД)', b.M.bad, '', GR2, PU)]];
   if (b.cut) boxes.push([row('Абсолютно годных (УЗК + МПД)', b.abs, '', GR, GN)]);
   const H0 = 34 + 46, Hh = H0 + boxes.reduce((a, x) => a + x.length * rh + 16, 0) + pad, c = document.createElement('canvas'); c.width = W; c.height = Hh;
@@ -1129,6 +1132,7 @@ document.addEventListener('click', async e => {
     case 'admwsform': return wsModal();
     case 'admws': { if (await admRpc('admin_ws_set', { p_new: $('a-ws').value })) { closeM(); toast('Пароль цеха сохранён'); if (tab === 'admin') rAdmin(); } return; }
     case 'admpass': { const { data, error } = await db.rpc('admin_set_pass', { p_old: $('ap-old').value, p_new: $('ap-new').value }); if (error) return toast(error.message); return toast(data ? 'Пароль администратора изменён' : 'Неверный текущий пароль или новый слишком простой'); }
+    case 'uzkmode': localStorage.setItem('uzkMode', d.v); sel.on = false; sel.ids.clear(); selBar(); return setTab(tab === 'sort' && d.v === 'view' ? 'list' : tab);
     case 'mini': return setMini(!mini.on);
     case 'admarch': case 'admarchall': {
       const all = d.act === 'admarchall', d0 = all ? null : $('ar-before').value; if (!all && !d0) return toast('Выберите дату');
