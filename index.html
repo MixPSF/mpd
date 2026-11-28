@@ -41,6 +41,7 @@
   body .bg-blue-600 { background-color: var(--ac, #2563eb); }
   body.dark .bg-sky-100 { background: #0c4a6e; } body.dark .text-sky-700 { color: #7dd3fc; } body.dark .bg-sky-200 { background: #075985; }
   body.dark .bg-amber-100 { background: #78350f; } body.dark .text-amber-700 { color: #fcd34d; }
+  body.dark .bg-fuchsia-100 { background: #701a75; } body.dark .text-fuchsia-700 { color: #f0abfc; }
   body.dark .bg-purple-100 { background: #3b0764; } body.dark .text-purple-700 { color: #d8b4fe; }
   body.wp #chat-wrap { background: transparent; }
   body.mini #hdrbar, body.mini #nav, body.mini #app, body.mini #selbar, body.mini #jump, body.mini #err-box, body.mini #chat-wrap { display: none !important; }
@@ -408,14 +409,14 @@ function selToggle(id) {
   sel.last = id; selBar(); rList();
 }
 function rowHTML(p) {
-  const bad = p.uzk_def !== 'N' || p.uzk_minus != null, mo = role() === 'mpd';   // МПД: тип отсорта не показываем, строка просто подсвечена
+  const so0 = sortOf(p.sort_id), cn = so0 && so0.special === 'cut' ? cutsOf(p) : 0, bad = p.uzk_def !== 'N' || p.uzk_minus != null || cn > 0, mo = role() === 'mpd';   // МПД: тип отсорта не показываем, строка просто подсвечена
   let b = '';
   if (!mo && cols.uzk) b += cell(p, 'uzk', 'УЗК', uLab(p), p.uzk_def === 'N' ? MC.N : MC[RA]);
   if (!mo && cols.minus) b += cell(p, 'minus', 'Минус', mnLab(p), p.uzk_minus == null ? MC.N : 'bg-amber-500 text-white');
   if (cols.mpd && uzkMode() !== 'input') b += ['1', '2'].map(n => { const v = mLab(p['mpd' + n + '_val']); return cell(p, 'mpd' + n, 'МПД ' + n, v, MC[v] || MC['-'], mo); }).join('');
-  if (cols.curve) { const so = sortOf(p.sort_id); b += so && so.special === 'cut' ? cell(p, 'cut', 'Подрез', p.cuts || 0, (p.cuts || 0) ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600') : cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600'); }
+  if (cols.curve) { const so = sortOf(p.sort_id); if (!(so && so.special === 'cut')) b += cell(p, 'curve', 'Кривая', p.curved ? 'К' : '—', p.curved ? 'bg-fuchsia-700 text-white' : 'bg-gray-200 text-gray-600'); }
   const chk = sel.on ? `<span class="text-lg leading-none">${sel.ids.has(p.id) ? '☑' : '☐'}</span>` : '';
-  const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span class="font-black text-base leading-5 text-slate-800 tracking-wide ${mo ? 'flex-none' : 'flex-1 break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}${mo ? '<span class="flex-1"></span>' : ''}`;
+  const num = chk + `<span class="w-8 text-right text-xs font-bold text-slate-400">${p.seq}</span><span class="font-black text-base leading-5 text-slate-800 tracking-wide ${mo ? 'flex-none' : 'flex-1 break-all'}">${esc(p.pipe_number)}</span>${tags(p, mo)}${cn && !mo ? '<span class="text-[10px] px-1 rounded bg-fuchsia-100 text-fuchsia-700 font-bold">подрез' + (cn > 1 ? '×2' : '') + '</span>' : ''}${mo && bad ? '<span class="text-[10px] font-bold text-red-600 px-1">брак</span>' : ''}${mo ? '<span class="flex-1"></span>' : ''}`;
   const at = `data-row="${p.id}" class="p-1 rounded-lg shadow-sm border ${bad ? 'bg-red-200 border-red-400 bad-row' : 'bg-white border-gray-200'}${sel.ids.has(p.id) ? ' ring-2 ring-blue-500' : ''}" ${flashStyle(p)}`;
   return mo ? `<div ${at}><div class="flex items-center gap-1">${num}${b}</div></div>`
     : `<div ${at}><div data-edit="${p.id}" class="flex items-center gap-1.5 py-1 mb-0.5">${num}</div>${b ? `<div class="flex gap-1">${b}</div>` : ''}</div>`;
@@ -603,6 +604,7 @@ function mpdReport() {            // отчёт МПД: 3 окна по 4 час
   return `За смену ${sDate(view)} ${D ? 'день' : 'ночь'}\n\n` + [0, 1, 2].map(wt).join('\n\n') + '\n\n' + tot;
 }
 // ===== Отчёт УЗК как в Excel: свежие / повторные, окончательный брак, повторно МПД =====
+const cutsOf = p => (p.mpd1_val === 'ЗАК' ? 1 : 0) + (p.mpd2_val === 'ЗАК' ? 1 : 0);   // подрезы = закалочные (ЗАК) на концах, ставит МПД
 const PROBE_AS_REP = true;                       // пробы считаем вместе с повторными
 const FINAL_LETTERS = [V], FINAL_MINUS = true;   // «Окончательный БРАК» = повторные трубы с внутренним дефектом (В) или минусом
 const hasL = (p, l) => p.uzk_def !== 'N' && p.uzk_def.includes(l);
@@ -610,18 +612,18 @@ const isRepP = p => p.kind === 'rep' || (PROBE_AS_REP && p.kind === 'probe');
 const pc1 = (a, b) => b ? (Math.round(a / b * 1000) / 10).toFixed(1) : '0.0';
 const nowHM = () => new Date(kNow()).toISOString().slice(11, 16);
 function uzkGrp(arr, cut) {
-  const n = arr.length, bad = arr.filter(isBad).length, ext = p => cut ? (p.cuts || 0) > 0 : !!p.curved;
+  const n = arr.length, bad = arr.filter(isBad).length, ext = p => cut ? cutsOf(p) > 0 : !!p.curved;
   const reasons = p => [hasL(p, V), hasL(p, H), hasL(p, P), p.uzk_minus != null, ext(p)].filter(Boolean).length;
   const goodAll = arr.filter(p => !isBad(p) && !ext(p)).length;
   return { n, bad, ok: n - bad, vp: arr.filter(p => hasL(p, V)).length, np: arr.filter(p => hasL(p, H)).length, pp: arr.filter(p => hasL(p, P)).length, s: arr.filter(p => p.uzk_minus != null).length,
-    extra: arr.filter(ext).length, cuts: cut ? arr.reduce((a, p) => a + (p.cuts || 0), 0) : 0, goodAll, badAll: n - goodAll, comb: arr.filter(p => reasons(p) >= 2).length };
+    extra: arr.filter(ext).length, cuts: cut ? arr.reduce((a, p) => a + cutsOf(p), 0) : 0, goodAll, badAll: n - goodAll, comb: arr.filter(p => reasons(p) >= 2).length };
 }
 function uzkBlock(s, arr) {
   const cut = s.special === 'cut', rp = arr.filter(isRepP), F = uzkGrp(arr.filter(p => !p.kind), cut), R = uzkGrp(rp, cut);
   const final = rp.filter(p => FINAL_LETTERS.some(l => hasL(p, l)) || (FINAL_MINUS && p.uzk_minus != null)).length;
   const mk = arr.filter(p => p.kind === 'repm'), M = { n: mk.length, bad: mk.filter(p => mpdBad(p.mpd1_val) || mpdBad(p.mpd2_val)).length }; M.ok = M.n - M.bad;
   return { label: `${s.diameter} x ${s.wall} ${s.grade || ''}`.trim(), tol: s.tol == null ? 12.5 : s.tol, cut, F, R, final, M, total: F.n + R.n + M.n, goodAll: F.goodAll + R.goodAll + M.ok, badAll: F.badAll + R.badAll + M.bad,
-    abs: arr.filter(p => !isBad(p) && !((p.cuts || 0) > 0) && p.mpd1_val === 'N' && p.mpd2_val === 'N').length };
+    abs: arr.filter(p => !isBad(p) && cutsOf(p) === 0 && p.mpd1_val === 'N' && p.mpd2_val === 'N').length };
 }
 function uzkBlocks(arr, info) {
   const g = new Map();
@@ -629,13 +631,13 @@ function uzkBlocks(arr, info) {
   return [...g.values()].map(x => uzkBlock(x.s, x.arr));
 }
 function uzkText(blocks, sh, at) {
-  const L = [`КНК за смену ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} (${sh.shift_type === 'D' ? 'день' : 'ночь'}) · на ${at}:`];
+  const L = [`КНК за смену ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} (${sh.shift_type === 'D' ? 'день' : 'ночь'}):`];
   blocks.forEach(b => {
     const ex = b.cut ? 'Подрез' : 'Кривая';
     L.push('', `${b.label}  ${b.tol}%`, `Всего за смену ${b.total}`, `Всего ГОДНЫХ ${b.goodAll} (${pc1(b.goodAll, b.total)}%)`, `Всего ОТСОРТОВ ${b.badAll} (${pc1(b.badAll, b.total)}%)`);
     const sec = (t, g) => L.push('', `${t} ${g.n}`, `Отсорт (УЗК) ${g.bad} (${pc1(g.bad, g.n)}%)`, `Норма (УЗК) ${g.ok} (${pc1(g.ok, g.n)}%)`, `ВП ${g.vp}, НП ${g.np}, ПП ${g.pp}, S- ${g.s}`,
       `${ex} ${g.extra}` + (b.cut ? `, подрезов ${g.cuts}` : ''), `Годное (УЗК + ${ex}) ${g.goodAll}`, `Отсорт (УЗК + ${ex}) ${g.badAll}`, `Совместные ${g.comb}`);
-    sec('Первично УЗК', b.F); sec('Повторно УЗК', b.R); L.push(`Окончательный БРАК ${b.final}`, '', `Повторно МПД ${b.M.n}`, `Норма (МПД) ${b.M.ok}`, `Отсорт (МПД) ${b.M.bad}`);
+    sec('Первично УЗК', b.F); if (b.R.n) { sec('Повторно УЗК', b.R); L.push(`Окончательный БРАК ${b.final}`); } if (b.M.n) L.push('', `Повторно МПД ${b.M.n}`, `Норма (МПД) ${b.M.ok}`, `Отсорт (МПД) ${b.M.bad}`);
     if (b.cut) L.push('', `Абсолютно годных (УЗК + МПД) ${b.abs}`, `Подрезов всего ${b.F.cuts + b.R.cuts} (труб ${b.F.extra + b.R.extra})`);
   });
   return L.join('\n');
@@ -667,7 +669,7 @@ function drawBlock(b, caption) {          // картинка, похожая н
 }
 async function shareImgs(arr, info, sh, at) {
   const bl = uzkBlocks(arr, info); if (!bl.length) return toast('Нет данных для отчёта');
-  const cap = `Отчёт на ${at} · смена ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} ${sh.shift_type === 'D' ? 'день' : 'ночь'}`, files = [];
+  const cap = `Отчёт · смена ${letter(sh.shift_date, sh.shift_type)} · ${sDate(sh)} ${sh.shift_type === 'D' ? 'день' : 'ночь'}`, files = [];
   for (let i = 0; i < bl.length; i++) files.push(new File([await drawBlock(bl[i], cap)], `otchet-${at.replace(':', '')}-${i + 1}.png`, { type: 'image/png' }));
   if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, title: 'Отчёт УЗК' }); return; } catch (e) { if (e.name === 'AbortError') return; } }
   files.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); }); toast('Картинки сохранены в загрузки');
@@ -678,7 +680,7 @@ function rStat() {
   $('v-stat').innerHTML = shiftBar() + (pipes.length ? '<div id="rep-imgs" class="space-y-3"></div>' + mb('shareimg', '📷 Отправить картинку (как в Excel)', 'bg-blue-600 text-white') +
     `<pre class="bg-white rounded-xl p-4 shadow-sm whitespace-pre-wrap font-sans text-sm" style="user-select:text">${esc(reportText())}</pre>` + mb('share', 'Поделиться текстом', 'bg-gray-300 text-gray-800') + mb('copy', 'Копировать текст', 'bg-gray-300 text-gray-800') : '<p class="text-center text-gray-400 py-8">Пока нет данных</p>');
   if (!pipes.length) return;
-  const cap = `Отчёт на ${nowHM()} · смена ${letter(view.shift_date, view.shift_type)} · ${sDate(view)} ${view.shift_type === 'D' ? 'день' : 'ночь'}`;
+  const cap = `Отчёт · смена ${letter(view.shift_date, view.shift_type)} · ${sDate(view)} ${view.shift_type === 'D' ? 'день' : 'ночь'}`;
   uzkBlocks(pipes, p => sortOf(p.sort_id)).forEach(b => drawBlock(b, cap).then(bl => { const i = document.createElement('img'); i.src = URL.createObjectURL(bl); i.className = 'w-full rounded-lg shadow'; const box = $('rep-imgs'); if (box) box.appendChild(i); }));
 }
 async function share(t, copyOnly) {

@@ -1,4 +1,4 @@
-const CACHE = 'mpd-uzk-v28';
+const CACHE = 'mpd-uzk-v29';
 const SHELL = ['./', './index.html', './config.js', './manifest.json', './icon-192.png', './icon-512.png', './wp-ind.jpg', './wp-fun.jpg', './wp-coffee.jpg'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
